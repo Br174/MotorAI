@@ -80,8 +80,8 @@ public class MainActivity extends Activity {
 
         root.addView(text("MotorAI Seed 010", 28, true));
         root.addView(text("Cervello: Transformer causale nativo C++ · pesi iniziali casuali · nessun modello preaddestrato", 15, false));
-        root.addView(text("Curriculum: L0 copia3 → L1 inversione → L2 duplica primo → L3 duplica secondo → L4 ordina", 14, false));
-        root.addView(text("L4: d + coppia + > = ordina (esempio: dfe> → dfe>ef).", 14, false));
+        root.addView(text("Curriculum: L0 copia3 → L1 inversione → L2 duplica primo → L3 duplica secondo → L4 minimo", 14, false));
+        root.addView(text("L4: d + coppia + > = scegli il simbolo minore (esempio: dfe> → dfe>e).", 14, false));
 
         state = text("Stato: inizializzazione…", 16, true);
         curriculum = text("Livello: —", 15, true);
@@ -372,7 +372,7 @@ public class MainActivity extends Activity {
         final String levelText = level <= 0 ? "Livello 0 · copy3" :
                 (level == 1 ? "Livello 1 · inversione" :
                 (level == 2 ? "Livello 2 · duplica primo" :
-                (level == 3 ? "Livello 3 · duplica secondo" : "Livello 4 · ordinamento")));
+                (level == 3 ? "Livello 3 · duplica secondo" : "Livello 4 · minimo")));
         ui(() -> curriculum.setText("Livello: " + levelText));
 
         if (level <= 0) {
@@ -433,7 +433,7 @@ public class MainActivity extends Activity {
         final String levelText = level <= 0 ? "Livello 0 · copy3" :
                 (level == 1 ? "Livello 1 · inversione" :
                 (level == 2 ? "Livello 2 · duplica primo" :
-                (level == 3 ? "Livello 3 · duplica secondo" : "Livello 4 · ordinamento")));
+                (level == 3 ? "Livello 3 · duplica secondo" : "Livello 4 · minimo")));
         ui(() -> curriculum.setText("Livello: " + levelText));
         if (level <= 0) {
             return String.format(Locale.ITALY, "Passi: %d · Parametri: %,d · Test loss: %.4f · Generalizzazione: %.1f%%", step, params, loss, acc * 100.0);
