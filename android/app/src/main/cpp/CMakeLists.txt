@@ -7,6 +7,6 @@ add_library(motorai_native SHARED
 )
 
 target_compile_features(motorai_native PRIVATE cxx_std_20)
-target_compile_options(motorai_native PRIVATE -O3 -ffast-math)
+target_compile_options(motorai_native PRIVATE -O3)
 find_library(log-lib log)
 target_link_libraries(motorai_native ${log-lib})
