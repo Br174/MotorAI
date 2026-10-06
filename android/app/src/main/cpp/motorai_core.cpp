@@ -709,15 +709,15 @@ bool Engine::loadCheckpoint(const std::string&dir){
             size_t target=it->value.n->data.size();
             if(target==sz){
                 it->value.n->data=data; it->m=mm; it->v=vv;
-            }else if(name=="token" && sz==11u*32u && target==static_cast<size_t>(vocab*32)){
+            }else if(name=="token" && sz==11u*32u && target==static_cast<size_t>(impl_->model.vocab*32)){
                 for(size_t i=0;i<sz;++i){it->value.n->data[i]=data[i];it->m[i]=mm[i];it->v[i]=vv[i];}
-            }else if(name=="head.w" && sz==32u*11u && target==static_cast<size_t>(32*vocab)){
+            }else if(name=="head.w" && sz==32u*11u && target==static_cast<size_t>(32*impl_->model.vocab)){
                 for(size_t row=0;row<32;++row) for(size_t col=0;col<11;++col){
-                    size_t src=row*11+col,dst=row*static_cast<size_t>(vocab)+col;
+                    size_t src=row*11+col,dst=row*static_cast<size_t>(impl_->model.vocab)+col;
                     it->value.n->data[dst]=data[src]; it->m[dst]=mm[src]; it->v[dst]=vv[src];
                 }
-                for(size_t row=0;row<32;++row) for(int col=11;col<vocab;++col)
-                    it->value.n->data[row*static_cast<size_t>(vocab)+col]=0.0f;
+                for(size_t row=0;row<32;++row) for(int col=11;col<impl_->model.vocab;++col)
+                    it->value.n->data[row*static_cast<size_t>(impl_->model.vocab)+col]=0.0f;
             }else return false;
         }
         if(!w)return false;
