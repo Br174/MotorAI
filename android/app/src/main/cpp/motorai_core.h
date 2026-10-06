@@ -16,6 +16,7 @@ struct TrainResult {
     Metrics train;
     Metrics validation;
     Metrics test;
+    Metrics retention;
     double elapsed_seconds = 0.0;
     bool paused = false;
 };
@@ -31,7 +32,8 @@ public:
     Metrics evaluateTrain();
     Metrics evaluateValidation();
     Metrics evaluateTest();
-    TrainResult train(int steps, int batch_size = 24, float lr = 0.01f);
+    Metrics evaluateRetention();
+    TrainResult train(int steps, int batch_size = 24, float lr = 0.001f);
     void requestPause();
     void clearPause();
     bool saveCheckpoint(const std::string& directory) const;
@@ -40,6 +42,8 @@ public:
     std::string statusJson() const;
     int parameterCount() const;
     int globalStep() const;
+    void setCurriculum(int level);
+    int curriculumLevel() const;
 
 private:
     class Impl;
