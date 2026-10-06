@@ -308,7 +308,8 @@ public class MainActivity extends Activity {
                     String line = formatTrainingMetrics(j);
                     ui(() -> metrics.setText(line));
 
-                    boolean accepted = afterValAcc >= 0.90
+                    double requiredValidation = level >= 4 ? 0.999 : 0.90;
+                    boolean accepted = afterValAcc >= requiredValidation
                             && (level < 1 || afterRetentionL0 >= 0.90)
                             && (level < 2 || afterRetentionL1 >= 0.90)
                             && (level < 3 || afterRetentionL2 >= 0.90)
@@ -335,7 +336,7 @@ public class MainActivity extends Activity {
                         rotateAndSaveCheckpoint();
                         stablePasses = 0;
                         ui(() -> state.setText("Stato: Livello 3 superato · Livello 4 pronto"));
-                    } else if (level >= 4 && stablePasses >= 2) {
+                    } else if (level >= 4 && stablePasses >= 4) {
                         training.set(false);
                         ui(() -> {
                             state.setText("Stato: Livello 4 superato su validation · TEST finale disponibile");
