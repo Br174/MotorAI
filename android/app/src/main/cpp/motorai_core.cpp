@@ -509,7 +509,7 @@ TrainResult Engine::train(int steps,int batch,float lr){
     auto t0=std::chrono::steady_clock::now();
     std::mt19937 r(impl_->seed+1+impl_->step);
     int done=0;
-    float effective_lr=(impl_->curriculum>=4)?lr*0.55f:((impl_->curriculum>=3)?lr*0.65f:((impl_->curriculum>=2)?lr*0.75f:lr));
+    float effective_lr=(impl_->curriculum>=4)?lr*0.45f:((impl_->curriculum>=3)?lr*0.65f:((impl_->curriculum>=2)?lr*0.75f:lr));
 
     for(int s=0;s<steps;++s){
         if(impl_->pause.load()) break;
@@ -533,11 +533,11 @@ TrainResult Engine::train(int steps,int batch,float lr){
                 else if(b < 20) idx=120+deterministicIndex(r,48);
                 else idx=168+deterministicIndex(r,72);
             }else if(impl_->curriculum>=4 && impl_->data.train.size()>=288){
-                // L4 50%; replay L3/L2/L1/L0 = 3 esempi ciascuno su batch 24.
-                if(b < 12) idx=deterministicIndex(r,72);
-                else if(b < 15) idx=72+deterministicIndex(r,48);
-                else if(b < 18) idx=120+deterministicIndex(r,48);
-                else if(b < 21) idx=168+deterministicIndex(r,48);
+                // L4 10/24; replay L3/L2/L1 = 3/24 ciascuno; L0 rinforzato = 5/24.
+                if(b < 10) idx=deterministicIndex(r,72);
+                else if(b < 13) idx=72+deterministicIndex(r,48);
+                else if(b < 16) idx=120+deterministicIndex(r,48);
+                else if(b < 19) idx=168+deterministicIndex(r,48);
                 else idx=216+deterministicIndex(r,72);
             }else{
                 idx=deterministicIndex(r,impl_->data.train.size());
