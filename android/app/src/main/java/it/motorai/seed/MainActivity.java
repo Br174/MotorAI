@@ -33,10 +33,13 @@ public class MainActivity extends Activity {
     public static native boolean nativeLoadCheckpoint(String path);
     public static native void nativeReset();
     public static native String nativeGenerate(String prefix);
+    public static native void nativeSetCurriculum(int level);
+    public static native int nativeCurriculum();
 
     private TextView metrics;
     private TextView device;
     private TextView state;
+    private TextView curriculum;
     private TextView answer;
     private EditText prompt;
     private Button learn;
@@ -66,7 +69,7 @@ public class MainActivity extends Activity {
 
     @Override protected void onCreate(Bundle stateBundle) {
         super.onCreate(stateBundle);
-        setTitle("MotorAI Seed 005");
+        setTitle("MotorAI Seed 006");
 
         ScrollView scroll = new ScrollView(this);
         LinearLayout root = new LinearLayout(this);
@@ -74,14 +77,17 @@ public class MainActivity extends Activity {
         root.setPadding(20, 34, 20, 30);
         scroll.addView(root);
 
-        root.addView(text("MotorAI Seed 005", 28, true));
+        root.addView(text("MotorAI Seed 006", 28, true));
         root.addView(text("Cervello: Transformer causale nativo C++ · pesi iniziali casuali · nessun modello preaddestrato", 15, false));
-        root.addView(text("Benchmark corrente: copy3 con TRAIN / VALIDATION / TEST separati", 14, false));
+        root.addView(text("Curriculum: Livello 0 copy3 → Livello 1 pattern multipli con retention", 14, false));
+        root.addView(text("L1: a=copia2 · b=inverti2 · c=ordina2 (esempi: aef>, bef>, cfe>)", 14, false));
 
         state = text("Stato: inizializzazione…", 16, true);
+        curriculum = text("Livello: —", 15, true);
         metrics = text("Metriche: —", 15, false);
         device = text("Dispositivo: —", 14, false);
         root.addView(state);
+        root.addView(curriculum);
         root.addView(metrics);
         root.addView(device);
 
@@ -103,7 +109,7 @@ public class MainActivity extends Activity {
 
         root.addView(text("Prova MotorAI", 18, true));
         prompt = new EditText(this);
-        prompt.setHint("Esempio: abc>");
+        prompt.setHint("Esempi: abc> · aef> · bef> · cfe>");
         prompt.setText("abc>");
         root.addView(prompt);
         Button talk = button("💬 Genera");
@@ -202,6 +208,7 @@ public class MainActivity extends Activity {
                     JSONObject before = new JSONObject(nativeEvaluate());
                     double beforeValLoss = before.optDouble("val_loss", Double.POSITIVE_INFINITY);
                     double beforeValAcc = before.optDouble("val_accuracy", 0.0);
+                    double beforeRetention = before.optDouble("retention_accuracy", 1.0);
 
                     // Checkpoint pre-blocco: se il blocco peggiora nettamente, torniamo qui.
                     if (!rotateAndSaveCheckpoint()) {
@@ -214,16 +221,21 @@ public class MainActivity extends Activity {
                     JSONObject j = new JSONObject(result);
                     double afterValLoss = j.optDouble("val_loss", Double.POSITIVE_INFINITY);
                     double afterValAcc = j.optDouble("val_accuracy", 0.0);
+                    double afterRetention = j.optDouble("retention_accuracy", 1.0);
+                    int level = j.optInt("curriculum", nativeCurriculum());
 
                     boolean numericFailure = !Double.isFinite(afterValLoss);
                     boolean clearRegression = afterValLoss > (beforeValLoss * 1.50 + 0.10)
                             && afterValAcc <= beforeValAcc;
+                    boolean catastrophicForgetting = level >= 1
+                            && afterRetention < 0.80
+                            && afterRetention + 0.05 < beforeRetention;
 
-                    if (numericFailure || clearRegression) {
+                    if (numericFailure || clearRegression || catastrophicForgetting) {
                         nativeLoadCheckpoint(currentCheckpoint().getAbsolutePath());
                         training.set(false);
                         ui(() -> {
-                            state.setText("Stato: regressione rilevata · rollback automatico al checkpoint buono");
+                            state.setText("Stato: regressione/dimenticanza rilevata · rollback automatico");
                             refreshMetrics();
                         });
                         break;
@@ -233,10 +245,18 @@ public class MainActivity extends Activity {
                     String line = formatMetrics(j);
                     ui(() -> metrics.setText(line));
 
-                    if (j.optInt("step", 0) >= 220) {
+                    int step = j.optInt("step", 0);
+                    if (level == 0 && step >= 220) {
+                        nativeSetCurriculum(1);
+                        rotateAndSaveCheckpoint();
+                        ui(() -> {
+                            state.setText("Stato: Livello 0 completato · passaggio automatico al Livello 1");
+                            refreshMetrics();
+                        });
+                    } else if (level >= 1 && step >= 620) {
                         training.set(false);
                         ui(() -> {
-                            state.setText("Stato: benchmark Seed 005 completato · checkpoint salvato");
+                            state.setText("Stato: Livello 1 completato · checkpoint salvato");
                             refreshMetrics();
                         });
                     }
@@ -272,9 +292,17 @@ public class MainActivity extends Activity {
     private String formatMetrics(JSONObject j) {
         int step = j.optInt("step", 0);
         int params = j.optInt("parameters", 9536);
+        int level = j.optInt("curriculum", nativeCurriculum());
         double loss = j.has("test_loss") ? j.optDouble("test_loss") : Double.NaN;
         double acc = j.has("test_accuracy") ? j.optDouble("test_accuracy") : Double.NaN;
-        return String.format(Locale.ITALY, "Passi: %d · Parametri: %,d · Test loss: %.4f · Generalizzazione: %.1f%%", step, params, loss, acc * 100.0);
+        double retention = j.has("retention_accuracy") ? j.optDouble("retention_accuracy") : acc;
+        final String levelText = level <= 0 ? "Livello 0 · copy3" : "Livello 1 · pattern";
+        ui(() -> curriculum.setText("Livello: " + levelText));
+        if (level <= 0) {
+            return String.format(Locale.ITALY, "Passi: %d · Parametri: %,d · Test loss: %.4f · Generalizzazione: %.1f%%", step, params, loss, acc * 100.0);
+        }
+        return String.format(Locale.ITALY, "Passi totali: %d · L1: %d/400 · Parametri: %,d · L1 loss: %.4f · L1 gen.: %.1f%% · Memoria L0: %.1f%%",
+                step, Math.max(0, step - 220), params, loss, acc * 100.0, retention * 100.0);
     }
 
     private boolean rotateAndSaveCheckpoint() {
