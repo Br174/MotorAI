@@ -28,6 +28,7 @@ public class MainActivity extends Activity {
     public static native String nativeStatus();
     public static native String nativeEvaluate();
     public static native String nativeTrainChunk(int steps);
+    public static native String nativeTrainingEvaluate();
     public static native void nativeRequestPause();
     public static native boolean nativeSaveCheckpoint(String path);
     public static native boolean nativeLoadCheckpoint(String path);
@@ -69,7 +70,7 @@ public class MainActivity extends Activity {
 
     @Override protected void onCreate(Bundle stateBundle) {
         super.onCreate(stateBundle);
-        setTitle("MotorAI Seed 007");
+        setTitle("MotorAI Seed 008");
 
         ScrollView scroll = new ScrollView(this);
         LinearLayout root = new LinearLayout(this);
@@ -77,7 +78,7 @@ public class MainActivity extends Activity {
         root.setPadding(20, 34, 20, 30);
         scroll.addView(root);
 
-        root.addView(text("MotorAI Seed 007", 28, true));
+        root.addView(text("MotorAI Seed 008", 28, true));
         root.addView(text("Cervello: Transformer causale nativo C++ · pesi iniziali casuali · nessun modello preaddestrato", 15, false));
         root.addView(text("Curriculum: L0 copia3 → L1 inversione → L2 selezione+duplicazione con retention", 14, false));
         root.addView(text("L2: duplica il primo simbolo usando >> (esempio: ef>> → ef>>ee).", 14, false));
@@ -185,16 +186,39 @@ public class MainActivity extends Activity {
 
         runAsync(() -> {
             boolean resumed = currentCheckpoint().exists() && nativeLoadCheckpoint(currentCheckpoint().getAbsolutePath());
-            ui(() -> state.setText(resumed ? "Stato: checkpoint ripreso automaticamente" : "Stato: Seed 005 pronta da pesi casuali"));
+            try {
+                int level = nativeCurriculum();
+                JSONObject trainState = new JSONObject(nativeTrainingEvaluate());
+                int step = trainState.optInt("step", 0);
+
+                if (resumed && level == 0 && step >= 220) {
+                    nativeSetCurriculum(1);
+                    rotateAndSaveCheckpoint();
+                    ui(() -> state.setText("Stato: checkpoint L0 ripreso · Livello 1 pronto"));
+                } else if (resumed && level == 1 && step >= 620) {
+                    nativeSetCurriculum(2);
+                    rotateAndSaveCheckpoint();
+                    ui(() -> state.setText("Stato: checkpoint L1 ripreso · Livello 2 pronto"));
+                } else if (resumed) {
+                    ui(() -> state.setText("Stato: checkpoint ripreso automaticamente"));
+                } else {
+                    ui(() -> state.setText("Stato: Seed 008 pronta da pesi casuali"));
+                }
+            } catch (Exception e) {
+                ui(() -> state.setText(resumed ? "Stato: checkpoint ripreso" : "Stato: Seed 008 pronta"));
+            }
             refreshMetrics();
         });
     }
 
     private void startTraining() {
         if (!training.compareAndSet(false, true)) return;
-        state.setText("Stato: training in corso…");
+        state.setText("Stato: training adattivo in corso…");
         learn.setEnabled(false);
+
         runAsync(() -> {
+            int stablePasses = 0;
+            double bestVal = -1.0;
             try {
                 while (training.get()) {
                     Guard g = readGuard();
@@ -205,26 +229,25 @@ public class MainActivity extends Activity {
                         break;
                     }
 
-                    JSONObject before = new JSONObject(nativeEvaluate());
+                    JSONObject before = new JSONObject(nativeTrainingEvaluate());
                     double beforeValLoss = before.optDouble("val_loss", Double.POSITIVE_INFINITY);
                     double beforeValAcc = before.optDouble("val_accuracy", 0.0);
                     double beforeRetentionL0 = before.optDouble("retention_l0_accuracy", 1.0);
                     double beforeRetentionL1 = before.optDouble("retention_l1_accuracy", 1.0);
 
-                    // Checkpoint pre-blocco: se il blocco peggiora nettamente, torniamo qui.
                     if (!rotateAndSaveCheckpoint()) {
                         training.set(false);
                         ui(() -> state.setText("Stato: impossibile creare checkpoint di sicurezza"));
                         break;
                     }
 
-                    String result = nativeTrainChunk(20);
-                    JSONObject j = new JSONObject(result);
+                    JSONObject j = new JSONObject(nativeTrainChunk(20));
                     double afterValLoss = j.optDouble("val_loss", Double.POSITIVE_INFINITY);
                     double afterValAcc = j.optDouble("val_accuracy", 0.0);
                     double afterRetentionL0 = j.optDouble("retention_l0_accuracy", 1.0);
                     double afterRetentionL1 = j.optDouble("retention_l1_accuracy", 1.0);
                     int level = j.optInt("curriculum", nativeCurriculum());
+                    int step = j.optInt("step", 0);
 
                     boolean numericFailure = !Double.isFinite(afterValLoss);
                     boolean clearRegression = afterValLoss > (beforeValLoss * 1.50 + 0.10)
@@ -247,28 +270,36 @@ public class MainActivity extends Activity {
                     }
 
                     rotateAndSaveCheckpoint();
-                    String line = formatMetrics(j);
+
+                    if (afterValAcc > bestVal) bestVal = afterValAcc;
+                    String line = formatTrainingMetrics(j);
                     ui(() -> metrics.setText(line));
 
-                    int step = j.optInt("step", 0);
-                    if (level == 0 && step >= 220) {
+                    boolean accepted = afterValAcc >= 0.90
+                            && (level < 1 || afterRetentionL0 >= 0.90)
+                            && (level < 2 || afterRetentionL1 >= 0.90);
+                    stablePasses = accepted ? stablePasses + 1 : 0;
+
+                    if (level == 0 && step >= 220 && stablePasses >= 2) {
                         nativeSetCurriculum(1);
                         rotateAndSaveCheckpoint();
-                        ui(() -> {
-                            state.setText("Stato: Livello 0 completato · passaggio automatico al Livello 1");
-                            refreshMetrics();
-                        });
-                    } else if (level == 1 && step >= 620) {
+                        stablePasses = 0;
+                        ui(() -> state.setText("Stato: Livello 0 superato · Livello 1 pronto"));
+                    } else if (level == 1 && step >= 620 && stablePasses >= 2) {
                         nativeSetCurriculum(2);
                         rotateAndSaveCheckpoint();
-                        ui(() -> {
-                            state.setText("Stato: Livello 1 completato · passaggio automatico al Livello 2");
-                            refreshMetrics();
-                        });
-                    } else if (level >= 2 && step >= 1220) {
+                        stablePasses = 0;
+                        ui(() -> state.setText("Stato: Livello 1 superato · Livello 2 pronto"));
+                    } else if (level >= 2 && stablePasses >= 2) {
                         training.set(false);
                         ui(() -> {
-                            state.setText("Stato: Livello 2 completato · checkpoint salvato");
+                            state.setText("Stato: Livello 2 superato su validation · TEST finale disponibile");
+                            refreshMetrics();
+                        });
+                    } else if (level >= 2 && step >= 2420) {
+                        training.set(false);
+                        ui(() -> {
+                            state.setText("Stato: Livello 2 non ancora superato · nessuna promozione");
                             refreshMetrics();
                         });
                     }
@@ -280,6 +311,33 @@ public class MainActivity extends Activity {
                 ui(() -> learn.setEnabled(true));
             }
         });
+    }
+
+    private String formatTrainingMetrics(JSONObject j) {
+        int step = j.optInt("step", 0);
+        int params = j.optInt("parameters", 9536);
+        int level = j.optInt("curriculum", nativeCurriculum());
+        double loss = j.optDouble("val_loss", Double.NaN);
+        double acc = j.optDouble("val_accuracy", Double.NaN);
+        double r0 = j.optDouble("retention_l0_accuracy", 1.0);
+        double r1 = j.optDouble("retention_l1_accuracy", 1.0);
+        final String levelText = level <= 0 ? "Livello 0 · copy3" :
+                (level == 1 ? "Livello 1 · inversione" : "Livello 2 · selezione+duplicazione");
+        ui(() -> curriculum.setText("Livello: " + levelText));
+
+        if (level <= 0) {
+            return String.format(Locale.ITALY,
+                    "Passi: %d · Parametri: %,d · Validation loss: %.4f · Val.: %.1f%%",
+                    step, params, loss, acc * 100.0);
+        }
+        if (level == 1) {
+            return String.format(Locale.ITALY,
+                    "Passi totali: %d · L1 passi: %d · Val.: %.1f%% · Memoria L0: %.1f%%",
+                    step, Math.max(0, step - 220), acc * 100.0, r0 * 100.0);
+        }
+        return String.format(Locale.ITALY,
+                "Passi totali: %d · L2 passi: %d · Val.: %.1f%% · Memoria L1: %.1f%% · L0: %.1f%%",
+                step, Math.max(0, step - 620), acc * 100.0, r1 * 100.0, r0 * 100.0);
     }
 
     private void stopTraining(String why) {
@@ -309,7 +367,7 @@ public class MainActivity extends Activity {
         double acc = j.has("test_accuracy") ? j.optDouble("test_accuracy") : Double.NaN;
         double retentionL0 = j.has("retention_l0_accuracy") ? j.optDouble("retention_l0_accuracy") : acc;
         double retentionL1 = j.has("retention_l1_accuracy") ? j.optDouble("retention_l1_accuracy") : acc;
-        final String levelText = level <= 0 ? "Livello 0 · copy3" : (level == 1 ? "Livello 1 · inversione" : "Livello 2 · ordinamento");
+        final String levelText = level <= 0 ? "Livello 0 · copy3" : (level == 1 ? "Livello 1 · inversione" : "Livello 2 · selezione+duplicazione");
         ui(() -> curriculum.setText("Livello: " + levelText));
         if (level <= 0) {
             return String.format(Locale.ITALY, "Passi: %d · Parametri: %,d · Test loss: %.4f · Generalizzazione: %.1f%%", step, params, loss, acc * 100.0);
@@ -318,7 +376,7 @@ public class MainActivity extends Activity {
             return String.format(Locale.ITALY, "Passi totali: %d · L1: %d/400 · Parametri: %,d · L1 loss: %.4f · L1 gen.: %.1f%% · Memoria L0: %.1f%%",
                     step, Math.max(0, step - 220), params, loss, acc * 100.0, retentionL0 * 100.0);
         }
-        return String.format(Locale.ITALY, "Passi totali: %d · L2: %d/600 · Parametri: %,d · L2 loss: %.4f · L2 gen.: %.1f%% · Memoria L1: %.1f%% · L0: %.1f%%",
+        return String.format(Locale.ITALY, "Passi totali: %d · L2 passi: %d · Parametri: %,d · L2 test loss: %.4f · L2 test: %.1f%% · Memoria L1: %.1f%% · L0: %.1f%%",
                 step, Math.max(0, step - 620), params, loss, acc * 100.0, retentionL1 * 100.0, retentionL0 * 100.0);
     }
 
