@@ -16,7 +16,8 @@ struct TrainResult {
     Metrics train;
     Metrics validation;
     Metrics test;
-    Metrics retention;
+    Metrics retention_l0;
+    Metrics retention_l1;
     double elapsed_seconds = 0.0;
     bool paused = false;
 };
@@ -32,7 +33,8 @@ public:
     Metrics evaluateTrain();
     Metrics evaluateValidation();
     Metrics evaluateTest();
-    Metrics evaluateRetention();
+    Metrics evaluateRetentionL0();
+    Metrics evaluateRetentionL1();
     TrainResult train(int steps, int batch_size = 24, float lr = 0.001f);
     void requestPause();
     void clearPause();
