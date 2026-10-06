@@ -479,4 +479,6 @@ std::string Engine::statusJson() const{
       <<",\"parameters\":"<<parameterCount()<<",\"test_loss\":"<<te.loss<<",\"test_accuracy\":"<<te.answer_accuracy
       <<",\"retention_accuracy\":"<<re.answer_accuracy<<",\"pretrained\":false}";
     return s.str();
+}
+
 } // namespace motorai
