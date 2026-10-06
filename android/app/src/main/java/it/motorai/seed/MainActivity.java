@@ -265,7 +265,7 @@ public class MainActivity extends Activity {
                             state.setText("Stato: Livello 1 completato · passaggio automatico al Livello 2");
                             refreshMetrics();
                         });
-                    } else if (level >= 2 && step >= 1620) {
+                    } else if (level >= 2 && step >= 1220) {
                         training.set(false);
                         ui(() -> {
                             state.setText("Stato: Livello 2 completato · checkpoint salvato");
@@ -318,7 +318,7 @@ public class MainActivity extends Activity {
             return String.format(Locale.ITALY, "Passi totali: %d · L1: %d/400 · Parametri: %,d · L1 loss: %.4f · L1 gen.: %.1f%% · Memoria L0: %.1f%%",
                     step, Math.max(0, step - 220), params, loss, acc * 100.0, retentionL0 * 100.0);
         }
-        return String.format(Locale.ITALY, "Passi totali: %d · L2: %d/1000 · Parametri: %,d · L2 loss: %.4f · L2 gen.: %.1f%% · Memoria L1: %.1f%% · L0: %.1f%%",
+        return String.format(Locale.ITALY, "Passi totali: %d · L2: %d/600 · Parametri: %,d · L2 loss: %.4f · L2 gen.: %.1f%% · Memoria L1: %.1f%% · L0: %.1f%%",
                 step, Math.max(0, step - 620), params, loss, acc * 100.0, retentionL1 * 100.0, retentionL0 * 100.0);
     }
 
