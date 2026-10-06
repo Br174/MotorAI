@@ -341,7 +341,7 @@ public class MainActivity extends Activity {
                             state.setText("Stato: Livello 4 superato su validation · TEST finale disponibile");
                             refreshMetrics();
                         });
-                    } else if (level >= 4 && step - j.optInt("curriculum_start_step", step) >= 2400) {
+                    } else if (level >= 4 && step - j.optInt("curriculum_start_step", step) >= 3200) {
                         training.set(false);
                         ui(() -> {
                             state.setText("Stato: Livello 4 non ancora superato · nessuna promozione");
