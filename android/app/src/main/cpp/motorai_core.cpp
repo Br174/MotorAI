@@ -354,7 +354,7 @@ public:
             size_t col=i%static_cast<size_t>(vocab);
             if(col==2 || col==3) return 1.0f; // classi a/b del confronto
         }
-        return 0.05f; // adattamento lento del cervello storico
+        return 0.10f; // adattamento lento del cervello storico
     }
     void adamStep(float lr,int batch,int step,int curriculum){
         double sq=0;
@@ -584,11 +584,11 @@ TrainResult Engine::train(int steps,int batch,float lr){
                 else if(b < 20) idx=120+deterministicIndex(r,48);
                 else idx=168+deterministicIndex(r,72);
             }else if(impl_->curriculum>=4 && impl_->data.train.size()>=288){
-                // Con il vecchio cervello congelato: 50% L4, 12.5% per ciascun livello precedente.
-                if(b < 12) idx=deterministicIndex(r,72);
-                else if(b < 15) idx=72+deterministicIndex(r,48);
-                else if(b < 18) idx=120+deterministicIndex(r,48);
-                else if(b < 21) idx=168+deterministicIndex(r,48);
+                // L4 rinforzato: 14/24 nuovo, poi replay 3 L3 + 3 L2 + 2 L1 + 2 L0.
+                if(b < 14) idx=deterministicIndex(r,72);
+                else if(b < 17) idx=72+deterministicIndex(r,48);
+                else if(b < 20) idx=120+deterministicIndex(r,48);
+                else if(b < 22) idx=168+deterministicIndex(r,48);
                 else idx=216+deterministicIndex(r,72);
             }else{
                 idx=deterministicIndex(r,impl_->data.train.size());
