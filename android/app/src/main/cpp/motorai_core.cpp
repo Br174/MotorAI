@@ -345,26 +345,33 @@ public:
     Tensor loss(const std::vector<int>& x,const std::vector<int>& y){ return crossEntropy(forward(x),y); }
     Tensor lossRange(const std::vector<int>& x,const std::vector<int>& y,int start,int count){ return crossEntropyRange(forward(x),y,start,count); }
 
-    bool updateIndex(const Param& z,size_t i,int curriculum) const {
+    float updateScale(const Param& z,size_t i,int curriculum) const {
         bool growth=z.name.rfind("grow1.",0)==0;
-        if(curriculum<4) return !growth;
-        if(growth) return true;
-        if(z.name=="token" && i>=static_cast<size_t>(11*d)) return true; // solo embedding del token ?
-        return false;
+        if(curriculum<4) return growth ? 0.0f : 1.0f;
+        if(growth) return 1.0f;
+        if(z.name=="token" && i>=static_cast<size_t>(11*d)) return 1.0f;
+        if(z.name=="head.w"){
+            size_t col=i%static_cast<size_t>(vocab);
+            if(col==2 || col==3) return 1.0f; // classi a/b del confronto
+        }
+        return 0.05f; // adattamento lento del cervello storico
     }
     void adamStep(float lr,int batch,int step,int curriculum){
         double sq=0;
-        for(auto&z:p) for(size_t i=0;i<z.value.n->grad.size();++i) if(updateIndex(z,i,curriculum)){
+        for(auto&z:p) for(size_t i=0;i<z.value.n->grad.size();++i){
+            float s=updateScale(z,i,curriculum);
+            if(s<=0.0f) continue;
             float gg=z.value.n->grad[i]/batch; sq+=double(gg)*gg;
         }
         float norm=std::sqrt((float)sq), clip=norm>1.0f?1.0f/(norm+1e-8f):1.0f;
         const float b1=.9f,b2=.999f,eps=1e-8f; float bc1=1-std::pow(b1,(float)step),bc2=1-std::pow(b2,(float)step);
         for(auto&z:p) for(size_t i=0;i<z.value.n->data.size();++i){
-            if(!updateIndex(z,i,curriculum)) continue;
+            float s=updateScale(z,i,curriculum);
+            if(s<=0.0f) continue;
             float g=z.value.n->grad[i]/batch*clip;
             z.m[i]=b1*z.m[i]+(1-b1)*g; z.v[i]=b2*z.v[i]+(1-b2)*g*g;
             float mh=z.m[i]/bc1,vh=z.v[i]/bc2;
-            z.value.n->data[i]-=lr*mh/(std::sqrt(vh)+eps);
+            z.value.n->data[i]-=lr*s*mh/(std::sqrt(vh)+eps);
         }
     }
 };
