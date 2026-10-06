@@ -493,10 +493,10 @@ struct Dataset {
             dst.push_back(encode("?"+q+">"+out+"\n"));
         };
 
-        // Split stratificato: TRAIN 96 (48+/48-), VAL 24, TEST 24.
+        // Split stratificato: TRAIN 108 (54+/54-), VAL 18, TEST 18.
         for(size_t i=0;i<72;++i){
-            if(i<48){ append(positives[i],'+',tr); append(negatives[i],'-',tr); }
-            else if(i<60){ append(positives[i],'+',va); append(negatives[i],'-',va); }
+            if(i<54){ append(positives[i],'+',tr); append(negatives[i],'-',tr); }
+            else if(i<63){ append(positives[i],'+',va); append(negatives[i],'-',va); }
             else { append(positives[i],'+',te); append(negatives[i],'-',te); }
         }
 
@@ -642,13 +642,13 @@ TrainResult Engine::train(int steps,int batch,float lr){
                 else if(b < 16) idx=72+deterministicIndex(r,48);
                 else if(b < 20) idx=120+deterministicIndex(r,48);
                 else idx=168+deterministicIndex(r,72);
-            }else if(impl_->curriculum>=4 && impl_->data.train.size()>=330){
-                // L4 14/24 (96 target + 18 prerequisiti), poi replay L3/L2/L1/L0.
-                if(b < 14) idx=deterministicIndex(r,114);
-                else if(b < 17) idx=114+deterministicIndex(r,48);
-                else if(b < 20) idx=162+deterministicIndex(r,48);
-                else if(b < 22) idx=210+deterministicIndex(r,48);
-                else idx=258+deterministicIndex(r,72);
+            }else if(impl_->curriculum>=4 && impl_->data.train.size()>=342){
+                // L4 14/24 (108 target + 18 prerequisiti), poi replay L3/L2/L1/L0.
+                if(b < 14) idx=deterministicIndex(r,126);
+                else if(b < 17) idx=126+deterministicIndex(r,48);
+                else if(b < 20) idx=174+deterministicIndex(r,48);
+                else if(b < 22) idx=222+deterministicIndex(r,48);
+                else idx=270+deterministicIndex(r,72);
             }else{
                 idx=deterministicIndex(r,impl_->data.train.size());
             }
