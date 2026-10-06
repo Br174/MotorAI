@@ -266,6 +266,7 @@ public:
     }
     int parameterCount() const { int n=0; for(auto&z:p)n+=z.value.size(); return n; }
     void zeroGrad(){ for(auto&z:p) std::fill(z.value.n->grad.begin(),z.value.n->grad.end(),0.0f); }
+    void resetOptimizerMoments(){ for(auto&z:p){ std::fill(z.m.begin(),z.m.end(),0.0f); std::fill(z.v.begin(),z.v.end(),0.0f); } }
 
     Tensor linear(const Tensor& x,const std::string&w,const std::string&b){ return addBias(matmul(x,P(w)),P(b)); }
     Tensor forward(const std::vector<int>& ids){
@@ -358,7 +359,7 @@ struct Dataset {
         }
 
         // Replay controllato del Livello 0 per ridurre il catastrophic forgetting.
-        for(size_t i=0;i<30 && i<baseTrain.size();++i) train.push_back(baseTrain[i]);
+        for(size_t i=0;i<54 && i<baseTrain.size();++i) train.push_back(baseTrain[i]);
     }
 };
 
@@ -397,7 +398,7 @@ Metrics Engine::evaluateTest(){ std::lock_guard<std::mutex> g(impl_->mu); return
 Metrics Engine::evaluateRetention(){ std::lock_guard<std::mutex> g(impl_->mu); return eval(impl_->model,impl_->data.retention); }
 int Engine::parameterCount() const{return impl_->model.parameterCount();}
 int Engine::globalStep() const{return impl_->step;}
-void Engine::setCurriculum(int level){ std::lock_guard<std::mutex> g(impl_->mu); level=level<=0?0:1; if(impl_->curriculum==level)return; impl_->curriculum=level; impl_->data=Dataset(impl_->seed,level); }
+void Engine::setCurriculum(int level){ std::lock_guard<std::mutex> g(impl_->mu); level=level<=0?0:1; if(impl_->curriculum==level)return; impl_->curriculum=level; impl_->model.resetOptimizerMoments(); impl_->data=Dataset(impl_->seed,level); }
 int Engine::curriculumLevel() const{ std::lock_guard<std::mutex> g(impl_->mu); return impl_->curriculum; }
 void Engine::requestPause(){impl_->pause.store(true);} void Engine::clearPause(){impl_->pause.store(false);}
 
