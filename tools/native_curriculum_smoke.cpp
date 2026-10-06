@@ -14,7 +14,7 @@ int main() {
 
     e.setCurriculum(1);
     auto beforeRetention = e.evaluateRetention();
-    auto r1 = e.train(400, 24, 0.001f);
+    auto r1 = e.train(600, 24, 0.001f);
     auto level1 = e.evaluateTest();
     auto retention = e.evaluateRetention();
 
@@ -29,6 +29,6 @@ int main() {
 
     if (level1.answer_accuracy < 0.90f) return 3;
     if (retention.answer_accuracy < 0.90f) return 4;
-    if (e.globalStep() != 620) return 5;
+    if (e.globalStep() != 820) return 5;
     return 0;
 }
