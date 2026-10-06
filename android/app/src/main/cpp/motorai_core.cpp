@@ -43,6 +43,30 @@ int numel(const std::vector<int>& s) {
     return n;
 }
 
+float deterministicUnit(std::mt19937& rng) {
+    return static_cast<float>((static_cast<double>(rng()) + 0.5) / 4294967296.0);
+}
+
+float deterministicNormalApprox(std::mt19937& rng) {
+    double sum = 0.0;
+    for (int i = 0; i < 12; ++i) sum += deterministicUnit(rng);
+    return static_cast<float>(sum - 6.0);
+}
+
+size_t deterministicIndex(std::mt19937& rng, size_t count) {
+    if (count == 0) throw std::runtime_error("deterministicIndex count=0");
+    return static_cast<size_t>((static_cast<uint64_t>(rng()) * static_cast<uint64_t>(count)) >> 32);
+}
+
+template <typename T>
+void deterministicShuffle(std::vector<T>& values, std::mt19937& rng) {
+    if (values.empty()) return;
+    for (size_t i = values.size() - 1; i > 0; --i) {
+        size_t j = deterministicIndex(rng, i + 1);
+        std::swap(values[i], values[j]);
+    }
+}
+
 Tensor tensor(std::vector<int> shape, std::vector<float> data, bool req=false) {
     if (numel(shape) != static_cast<int>(data.size())) throw std::runtime_error("tensor shape mismatch");
     auto p = std::make_shared<Node>();
@@ -80,7 +104,7 @@ Tensor add(const Tensor& a, const Tensor& b) {
     bool req=a.n->requires_grad||b.n->requires_grad;
     Tensor y=tensor(a.n->shape,std::move(out),req);
     y.n->parents={a.n,b.n};
-    y.n->backward=[pa=a.n,pb=b.n,py=y.n]{
+    y.n->backward=[pa=a.n,pb=b.n,py=y.n.get()]{
         if (pa->requires_grad) for(size_t i=0;i<pa->grad.size();++i) pa->grad[i]+=py->grad[i];
         if (pb->requires_grad) for(size_t i=0;i<pb->grad.size();++i) pb->grad[i]+=py->grad[i];
     };
@@ -95,7 +119,7 @@ Tensor addBias(const Tensor& a, const Tensor& b) {
     bool req=a.n->requires_grad||b.n->requires_grad;
     Tensor y=tensor({m,n},std::move(out),req);
     y.n->parents={a.n,b.n};
-    y.n->backward=[pa=a.n,pb=b.n,py=y.n,m,n]{
+    y.n->backward=[pa=a.n,pb=b.n,py=y.n.get(),m,n]{
         if(pa->requires_grad) for(size_t i=0;i<pa->grad.size();++i) pa->grad[i]+=py->grad[i];
         if(pb->requires_grad) for(int i=0;i<m;++i) for(int j=0;j<n;++j) pb->grad[j]+=py->grad[i*n+j];
     };
@@ -106,7 +130,7 @@ Tensor scale(const Tensor& a,float s) {
     std::vector<float> out(a.size()); for(int i=0;i<a.size();++i) out[i]=a.n->data[i]*s;
     Tensor y=tensor(a.n->shape,std::move(out),a.n->requires_grad);
     y.n->parents={a.n};
-    y.n->backward=[pa=a.n,py=y.n,s]{ if(pa->requires_grad) for(size_t i=0;i<pa->grad.size();++i) pa->grad[i]+=py->grad[i]*s; };
+    y.n->backward=[pa=a.n,py=y.n.get(),s]{ if(pa->requires_grad) for(size_t i=0;i<pa->grad.size();++i) pa->grad[i]+=py->grad[i]*s; };
     return y;
 }
 
@@ -118,7 +142,7 @@ Tensor matmul(const Tensor& a,const Tensor& b) {
     bool req=a.n->requires_grad||b.n->requires_grad;
     Tensor y=tensor({m,n},std::move(out),req);
     y.n->parents={a.n,b.n};
-    y.n->backward=[pa=a.n,pb=b.n,py=y.n,m,k,n]{
+    y.n->backward=[pa=a.n,pb=b.n,py=y.n.get(),m,k,n]{
         if(pa->requires_grad){
             for(int i=0;i<m;++i) for(int p=0;p<k;++p){ float s=0; for(int j=0;j<n;++j) s+=py->grad[i*n+j]*pb->data[p*n+j]; pa->grad[i*k+p]+=s; }
         }
@@ -134,7 +158,7 @@ Tensor transpose2(const Tensor& a) {
     int m=a.dim(0),n=a.dim(1); std::vector<float> out(n*m);
     for(int i=0;i<m;++i) for(int j=0;j<n;++j) out[j*m+i]=a.n->data[i*n+j];
     Tensor y=tensor({n,m},std::move(out),a.n->requires_grad); y.n->parents={a.n};
-    y.n->backward=[pa=a.n,py=y.n,m,n]{ if(pa->requires_grad) for(int i=0;i<m;++i) for(int j=0;j<n;++j) pa->grad[i*n+j]+=py->grad[j*m+i]; };
+    y.n->backward=[pa=a.n,py=y.n.get(),m,n]{ if(pa->requires_grad) for(int i=0;i<m;++i) for(int j=0;j<n;++j) pa->grad[i*n+j]+=py->grad[j*m+i]; };
     return y;
 }
 
@@ -143,7 +167,7 @@ Tensor causalMask(const Tensor& a) {
     int t=a.dim(0); std::vector<float> out=a.n->data;
     for(int i=0;i<t;++i) for(int j=i+1;j<t;++j) out[i*t+j]-=1e9f;
     Tensor y=tensor({t,t},std::move(out),a.n->requires_grad); y.n->parents={a.n};
-    y.n->backward=[pa=a.n,py=y.n,t]{ if(pa->requires_grad) for(int i=0;i<t;++i) for(int j=0;j<=i;++j) pa->grad[i*t+j]+=py->grad[i*t+j]; };
+    y.n->backward=[pa=a.n,py=y.n.get(),t]{ if(pa->requires_grad) for(int i=0;i<t;++i) for(int j=0;j<=i;++j) pa->grad[i*t+j]+=py->grad[i*t+j]; };
     return y;
 }
 
@@ -156,7 +180,7 @@ Tensor softmaxRows(const Tensor& a) {
         for(int j=0;j<n;++j) out[i*n+j]/=sum;
     }
     Tensor y=tensor({m,n},std::move(out),a.n->requires_grad); y.n->parents={a.n};
-    y.n->backward=[pa=a.n,py=y.n,m,n]{
+    y.n->backward=[pa=a.n,py=y.n.get(),m,n]{
         if(!pa->requires_grad) return;
         for(int i=0;i<m;++i){ float dot=0; for(int j=0;j<n;++j) dot+=py->grad[i*n+j]*py->data[i*n+j]; for(int j=0;j<n;++j) pa->grad[i*n+j]+=py->data[i*n+j]*(py->grad[i*n+j]-dot); }
     };
@@ -167,7 +191,7 @@ Tensor gelu(const Tensor& a) {
     std::vector<float> out(a.size());
     for(int i=0;i<a.size();++i){ float x=a.n->data[i]; float u=0.7978845608f*(x+0.044715f*x*x*x); out[i]=0.5f*x*(1.0f+std::tanh(u)); }
     Tensor y=tensor(a.n->shape,std::move(out),a.n->requires_grad); y.n->parents={a.n};
-    y.n->backward=[pa=a.n,py=y.n]{
+    y.n->backward=[pa=a.n,py=y.n.get()]{
         if(!pa->requires_grad) return;
         for(size_t i=0;i<pa->data.size();++i){ float x=pa->data[i]; float u=0.7978845608f*(x+0.044715f*x*x*x); float th=std::tanh(u); float du=0.7978845608f*(1.0f+3.0f*0.044715f*x*x); float d=0.5f*(1.0f+th)+0.5f*x*(1.0f-th*th)*du; pa->grad[i]+=py->grad[i]*d; }
     };
@@ -179,7 +203,7 @@ Tensor embedding(const Tensor& w,const std::vector<int>& ids) {
     int n=w.dim(0),d=w.dim(1),t=static_cast<int>(ids.size()); std::vector<float> out(t*d);
     for(int i=0;i<t;++i){ if(ids[i]<0||ids[i]>=n) throw std::runtime_error("token out of range"); for(int j=0;j<d;++j) out[i*d+j]=w.n->data[ids[i]*d+j]; }
     Tensor y=tensor({t,d},std::move(out),w.n->requires_grad); y.n->parents={w.n};
-    y.n->backward=[pw=w.n,py=y.n,ids,t,d]{ if(!pw->requires_grad)return; for(int i=0;i<t;++i) for(int j=0;j<d;++j) pw->grad[ids[i]*d+j]+=py->grad[i*d+j]; };
+    y.n->backward=[pw=w.n,py=y.n.get(),ids,t,d]{ if(!pw->requires_grad)return; for(int i=0;i<t;++i) for(int j=0;j<d;++j) pw->grad[ids[i]*d+j]+=py->grad[i*d+j]; };
     return y;
 }
 
@@ -189,7 +213,7 @@ Tensor layerNorm(const Tensor& x,const Tensor& gamma,const Tensor& beta,float ep
     for(int r=0;r<m;++r){ float mean=0; for(int j=0;j<d;++j) mean+=x.n->data[r*d+j]; mean/=d; float var=0; for(int j=0;j<d;++j){ float c=x.n->data[r*d+j]-mean; var+=c*c; } var/=d; inv[r]=1.0f/std::sqrt(var+eps); for(int j=0;j<d;++j){ float h=(x.n->data[r*d+j]-mean)*inv[r]; xhat[r*d+j]=h; out[r*d+j]=h*gamma.n->data[j]+beta.n->data[j]; } }
     bool req=x.n->requires_grad||gamma.n->requires_grad||beta.n->requires_grad;
     Tensor y=tensor({m,d},std::move(out),req); y.n->parents={x.n,gamma.n,beta.n};
-    y.n->backward=[px=x.n,pg=gamma.n,pb=beta.n,py=y.n,xhat=std::move(xhat),inv=std::move(inv),m,d]{
+    y.n->backward=[px=x.n,pg=gamma.n,pb=beta.n,py=y.n.get(),xhat=std::move(xhat),inv=std::move(inv),m,d]{
         if(pg->requires_grad) for(int r=0;r<m;++r) for(int j=0;j<d;++j) pg->grad[j]+=py->grad[r*d+j]*xhat[r*d+j];
         if(pb->requires_grad) for(int r=0;r<m;++r) for(int j=0;j<d;++j) pb->grad[j]+=py->grad[r*d+j];
         if(px->requires_grad){
@@ -206,7 +230,7 @@ Tensor crossEntropy(const Tensor& logits,const std::vector<int>& targets) {
     int t=logits.dim(0),v=logits.dim(1); float loss=0; std::vector<float> probs(logits.size());
     for(int i=0;i<t;++i){ float mx=-std::numeric_limits<float>::infinity(); for(int j=0;j<v;++j) mx=std::max(mx,logits.n->data[i*v+j]); float sum=0; for(int j=0;j<v;++j){ probs[i*v+j]=std::exp(logits.n->data[i*v+j]-mx); sum+=probs[i*v+j]; } for(int j=0;j<v;++j) probs[i*v+j]/=sum; loss-=std::log(std::max(probs[i*v+targets[i]],1e-12f)); }
     loss/=t; Tensor y=tensor({1},{loss},logits.n->requires_grad); y.n->parents={logits.n};
-    y.n->backward=[pl=logits.n,py=y.n,probs=std::move(probs),targets,t,v]{ if(!pl->requires_grad)return; float g=py->grad[0]/t; for(int i=0;i<t;++i) for(int j=0;j<v;++j){ float d=probs[i*v+j]-(j==targets[i]?1.0f:0.0f); pl->grad[i*v+j]+=g*d; } };
+    y.n->backward=[pl=logits.n,py=y.n.get(),probs=std::move(probs),targets,t,v]{ if(!pl->requires_grad)return; float g=py->grad[0]/t; for(int i=0;i<t;++i) for(int j=0;j<v;++j){ float d=probs[i*v+j]-(j==targets[i]?1.0f:0.0f); pl->grad[i*v+j]+=g*d; } };
     return y;
 }
 
@@ -229,7 +253,7 @@ public:
 
     void addParam(const std::string& name,std::vector<int> shape,bool normal=true,float fill=0.0f){
         std::vector<float> data(numel(shape));
-        if(normal){ std::normal_distribution<float> nd(0.0f,0.02f); for(float&x:data)x=nd(rng);} else std::fill(data.begin(),data.end(),fill);
+        if(normal){ for(float&x:data)x=0.02f*deterministicNormalApprox(rng);} else std::fill(data.begin(),data.end(),fill);
         Tensor t=tensor(shape,std::move(data),true); p.push_back({name,t,std::vector<float>(t.size(),0),std::vector<float>(t.size(),0)});
     }
     void init(){
@@ -281,7 +305,7 @@ struct Dataset {
     explicit Dataset(uint32_t seed){
         std::vector<std::string> triples; std::string alphabet="abcdefghi";
         for(char a:alphabet)for(char b:alphabet)if(b!=a)for(char c:alphabet)if(c!=a&&c!=b){ std::string s; s+=a;s+=b;s+=c;triples.push_back(s); }
-        std::mt19937 r(seed); std::shuffle(triples.begin(),triples.end(),r); triples.resize(120);
+        std::mt19937 r(seed); deterministicShuffle(triples,r); triples.resize(120);
         for(int i=0;i<120;++i){ std::string raw=triples[i]+">"+triples[i]+"\n"; if(i<90)train.push_back(encode(raw)); else if(i<105)val.push_back(encode(raw)); else test.push_back(encode(raw)); }
     }
 };
@@ -314,8 +338,8 @@ void Engine::requestPause(){impl_->pause.store(true);} void Engine::clearPause()
 
 TrainResult Engine::train(int steps,int batch,float lr){
     std::lock_guard<std::mutex> guard(impl_->mu);
-    clearPause(); auto t0=std::chrono::steady_clock::now(); std::mt19937 r(impl_->seed+1+impl_->step); std::uniform_int_distribution<int> pick(0,(int)impl_->data.train.size()-1); int done=0;
-    for(int s=0;s<steps;++s){ if(impl_->pause.load())break; impl_->model.zeroGrad(); for(int b=0;b<batch;++b){auto&e=impl_->data.train[pick(r)]; Tensor L=impl_->model.loss(e.x,e.y); backward(L);} ++impl_->step; impl_->model.adamStep(lr,batch,impl_->step); ++done; }
+    clearPause(); auto t0=std::chrono::steady_clock::now(); std::mt19937 r(impl_->seed+1+impl_->step); int done=0;
+    for(int s=0;s<steps;++s){ if(impl_->pause.load())break; impl_->model.zeroGrad(); for(int b=0;b<batch;++b){auto&e=impl_->data.train[deterministicIndex(r, impl_->data.train.size())]; Tensor L=impl_->model.loss(e.x,e.y); backward(L);} ++impl_->step; impl_->model.adamStep(lr,batch,impl_->step); ++done; }
     auto t1=std::chrono::steady_clock::now(); TrainResult tr; tr.steps_completed=done; tr.train=eval(impl_->model,impl_->data.train); tr.validation=eval(impl_->model,impl_->data.val); tr.test=eval(impl_->model,impl_->data.test); tr.elapsed_seconds=std::chrono::duration<double>(t1-t0).count(); tr.paused=impl_->pause.load(); return tr;
 }
 
@@ -329,12 +353,12 @@ std::string Engine::generate(const std::string&prefix,int new_chars){
 
 bool Engine::saveCheckpoint(const std::string&dir) const{
     std::lock_guard<std::mutex> guard(impl_->mu);
-    try{ std::filesystem::create_directories(dir); std::ofstream w(dir+"/weights.bin",std::ios::binary); if(!w)return false; const char magic[8]={'M','O','T','A','I','0','0','2'}; w.write(magic,8); uint32_t ver=1,pc=impl_->model.p.size(),step=impl_->step,seed=impl_->seed; w.write((char*)&ver,4);w.write((char*)&seed,4);w.write((char*)&step,4);w.write((char*)&pc,4); for(auto&z:impl_->model.p){uint32_t nl=z.name.size(),sz=z.value.n->data.size();w.write((char*)&nl,4);w.write(z.name.data(),nl);w.write((char*)&sz,4);w.write((char*)z.value.n->data.data(),sz*sizeof(float));w.write((char*)z.m.data(),sz*sizeof(float));w.write((char*)z.v.data(),sz*sizeof(float));} w.close(); Metrics te=eval(const_cast<TinyTransformer&>(impl_->model),impl_->data.test); std::ofstream j(dir+"/checkpoint.json"); j<<"{\n  \"format\": \"MOTORAI_CHECKPOINT_NATIVE_V1\",\n  \"seed\": "<<impl_->seed<<",\n  \"global_step\": "<<impl_->step<<",\n  \"parameter_count\": "<<impl_->model.parameterCount()<<",\n  \"test_loss\": "<<te.loss<<",\n  \"test_answer_accuracy\": "<<te.answer_accuracy<<",\n  \"pretrained_model\": false,\n  \"weights_origin\": \"random_then_local_training\"\n}\n"; return (bool)j; }catch(...){return false;}
+    try{ std::filesystem::create_directories(dir); std::ofstream w(dir+"/weights.bin",std::ios::binary); if(!w)return false; const char magic[8]={'M','O','T','A','I','0','0','4'}; w.write(magic,8); uint32_t ver=1,pc=impl_->model.p.size(),step=impl_->step,seed=impl_->seed; w.write((char*)&ver,4);w.write((char*)&seed,4);w.write((char*)&step,4);w.write((char*)&pc,4); for(auto&z:impl_->model.p){uint32_t nl=z.name.size(),sz=z.value.n->data.size();w.write((char*)&nl,4);w.write(z.name.data(),nl);w.write((char*)&sz,4);w.write((char*)z.value.n->data.data(),sz*sizeof(float));w.write((char*)z.m.data(),sz*sizeof(float));w.write((char*)z.v.data(),sz*sizeof(float));} w.close(); Metrics te=eval(const_cast<TinyTransformer&>(impl_->model),impl_->data.test); std::ofstream j(dir+"/checkpoint.json"); j<<"{\n  \"format\": \"MOTORAI_CHECKPOINT_NATIVE_V1\",\n  \"seed\": "<<impl_->seed<<",\n  \"global_step\": "<<impl_->step<<",\n  \"parameter_count\": "<<impl_->model.parameterCount()<<",\n  \"test_loss\": "<<te.loss<<",\n  \"test_answer_accuracy\": "<<te.answer_accuracy<<",\n  \"pretrained_model\": false,\n  \"weights_origin\": \"random_then_local_training\"\n}\n"; return (bool)j; }catch(...){return false;}
 }
 
 bool Engine::loadCheckpoint(const std::string&dir){
     std::lock_guard<std::mutex> guard(impl_->mu);
-    try{std::ifstream w(dir+"/weights.bin",std::ios::binary);if(!w)return false;char magic[8];w.read(magic,8);if(std::string(magic,8)!="MOTAI002")return false;uint32_t ver,seed,step,pc;w.read((char*)&ver,4);w.read((char*)&seed,4);w.read((char*)&step,4);w.read((char*)&pc,4);if(ver!=1||pc!=impl_->model.p.size())return false; for(auto&z:impl_->model.p){uint32_t nl,sz;w.read((char*)&nl,4);std::string name(nl,' ');w.read(name.data(),nl);w.read((char*)&sz,4);if(name!=z.name||sz!=z.value.n->data.size())return false;w.read((char*)z.value.n->data.data(),sz*sizeof(float));w.read((char*)z.m.data(),sz*sizeof(float));w.read((char*)z.v.data(),sz*sizeof(float));} if(!w)return false; impl_->seed=seed; impl_->data=Dataset(seed); impl_->step=step; return true;}catch(...){return false;}
+    try{std::ifstream w(dir+"/weights.bin",std::ios::binary);if(!w)return false;char magic[8];w.read(magic,8);if(std::string(magic,8)!="MOTAI004")return false;uint32_t ver,seed,step,pc;w.read((char*)&ver,4);w.read((char*)&seed,4);w.read((char*)&step,4);w.read((char*)&pc,4);if(ver!=1||pc!=impl_->model.p.size())return false; for(auto&z:impl_->model.p){uint32_t nl,sz;w.read((char*)&nl,4);std::string name(nl,' ');w.read(name.data(),nl);w.read((char*)&sz,4);if(name!=z.name||sz!=z.value.n->data.size())return false;w.read((char*)z.value.n->data.data(),sz*sizeof(float));w.read((char*)z.m.data(),sz*sizeof(float));w.read((char*)z.v.data(),sz*sizeof(float));} if(!w)return false; impl_->seed=seed; impl_->data=Dataset(seed); impl_->step=step; return true;}catch(...){return false;}
 }
 
 std::string Engine::statusJson() const{ std::lock_guard<std::mutex> guard(impl_->mu); Metrics te=eval(impl_->model,impl_->data.test); std::ostringstream s;s<<std::fixed<<std::setprecision(4)<<"{\"seed\":"<<impl_->seed<<",\"step\":"<<impl_->step<<",\"parameters\":"<<parameterCount()<<",\"test_loss\":"<<te.loss<<",\"test_accuracy\":"<<te.answer_accuracy<<",\"pretrained\":false}";return s.str(); }
