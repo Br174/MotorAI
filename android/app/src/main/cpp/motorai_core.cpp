@@ -360,48 +360,25 @@ struct Dataset {
         }
     }
 
-    static void buildPairs(uint32_t seed,bool sorted,std::vector<Example>&tr,std::vector<Example>&va,std::vector<Example>&te){
-        std::string symbols="abcdefghi";
-        if(!sorted){
-            std::vector<std::string> pairs;
-            for(char a:symbols)for(char b:symbols)if(a!=b){ std::string p; p+=a; p+=b; pairs.push_back(p); }
-            std::mt19937 r(seed); deterministicShuffle(pairs,r);
-            for(size_t i=0;i<pairs.size();++i){
-                std::string out=pairs[i]; std::reverse(out.begin(),out.end());
-                std::string raw=pairs[i]+">"+out+"\n";
-                if(i<48) tr.push_back(encode(raw));
-                else if(i<60) va.push_back(encode(raw));
-                else te.push_back(encode(raw));
+    static void buildPairs(uint32_t seed,bool level2,std::vector<Example>&tr,std::vector<Example>&va,std::vector<Example>&te){
+        std::vector<std::string> pairs; std::string symbols="abcdefghi";
+        for(char a:symbols)for(char b:symbols)if(a!=b){ std::string p; p+=a; p+=b; pairs.push_back(p); }
+        std::mt19937 r(seed); deterministicShuffle(pairs,r);
+        for(size_t i=0;i<pairs.size();++i){
+            std::string out;
+            if(level2){
+                out.push_back(pairs[i][0]);
+                out.push_back(pairs[i][0]);
+            }else{
+                out=pairs[i];
+                std::reverse(out.begin(),out.end());
             }
-            return;
-        }
-
-        // L2 graduale: tutte le coppie non ordinate sono viste in un verso,
-        // mentre validation/test usano l'orientamento opposto mai mostrato.
-        std::vector<std::string> canonical;
-        for(size_t i=0;i<symbols.size();++i) for(size_t j=i+1;j<symbols.size();++j){
-            std::string p; p+=symbols[i]; p+=symbols[j]; canonical.push_back(p);
-        }
-        std::mt19937 r(seed); deterministicShuffle(canonical,r);
-
-        for(auto p:canonical){
-            std::string raw=p+">>"+p+"\n";
-            tr.push_back(encode(raw));
-        }
-
-        std::vector<std::string> reversed=canonical;
-        for(auto& p:reversed) std::reverse(p.begin(),p.end());
-        deterministicShuffle(reversed,r);
-        for(size_t i=0;i<reversed.size();++i){
-            std::string out=reversed[i];
-            if(out[0]>out[1]) std::swap(out[0],out[1]);
-            std::string raw=reversed[i]+">>"+out+"\n";
-            if(i<12) tr.push_back(encode(raw));
-            else if(i<24) va.push_back(encode(raw));
+            std::string raw=pairs[i]+(level2?">>":">")+out+"\n";
+            if(i<48) tr.push_back(encode(raw));
+            else if(i<60) va.push_back(encode(raw));
             else te.push_back(encode(raw));
         }
     }
-
     explicit Dataset(uint32_t seed,int level=0){
         std::vector<Example> l0tr,l0va,l0te;
         std::vector<Example> l1tr,l1va,l1te;
@@ -424,7 +401,7 @@ struct Dataset {
             return;
         }
 
-        // Livello 2: ordinamento con doppio separatore, più replay bilanciato di L1 e L0.
+        // Livello 2: seleziona e duplica il primo simbolo con doppio separatore, più replay bilanciato.
         train=l2tr; val=l2va; test=l2te;
         // Peso L2 leggermente maggiore, replay L1 pieno e replay L0 rinforzato.
         for(size_t i=0;i<24 && i<l2tr.size();++i) train.push_back(l2tr[i]);
