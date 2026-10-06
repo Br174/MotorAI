@@ -10,7 +10,8 @@ static bool accepted(motorai::Engine& e,int level){
     auto r1=e.evaluateRetentionL1();
     auto r2=e.evaluateRetentionL2();
     auto r3=e.evaluateRetentionL3();
-    return va.answer_accuracy>=0.90f &&
+    float required=(level>=4)?0.999f:0.90f;
+    return va.answer_accuracy>=required &&
            (level<1 || r0.answer_accuracy>=0.90f) &&
            (level<2 || r1.answer_accuracy>=0.90f) &&
            (level<3 || r2.answer_accuracy>=0.90f) &&
@@ -19,11 +20,12 @@ static bool accepted(motorai::Engine& e,int level){
 
 static bool train_until(motorai::Engine& e,int level,int max_extra){
     int stable=0, start=e.globalStep();
-    while(e.globalStep()-start<max_extra && stable<2){
+    int requiredStable=(level>=4)?4:2;
+    while(e.globalStep()-start<max_extra && stable<requiredStable){
         e.train(20,24,0.001f);
         stable=accepted(e,level)?stable+1:0;
     }
-    return stable>=2;
+    return stable>=requiredStable;
 }
 
 static bool save_reload(motorai::Engine& e,unsigned seed,int expected,motorai::Engine& out){
