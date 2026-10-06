@@ -57,7 +57,7 @@ jobs:
       - name: Upload MotorAI APK
         uses: actions/upload-artifact@v6
         with:
-          name: MotorAI-Seed008-debug
+          name: MotorAI-Seed009-debug
           path: android/app/build/outputs/apk/debug/*.apk
           if-no-files-found: error
           retention-days: 14
@@ -71,3 +71,5 @@ jobs:
 # Seed007 Level2 validation
 
 # Seed008 adaptive validation gate
+
+# Seed009 Level3 gate
