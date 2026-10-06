@@ -81,7 +81,7 @@ public class MainActivity extends Activity {
         root.addView(text("MotorAI Seed 010", 28, true));
         root.addView(text("Cervello: Transformer causale nativo C++ · pesi iniziali casuali · nessun modello preaddestrato", 15, false));
         root.addView(text("Curriculum: L0 copia3 → L1 inversione → L2 duplica primo → L3 duplica secondo → L4 confronto", 14, false));
-        root.addView(text("L4: d + coppia + > = confronto (a: primo<secondo, b: altrimenti). Esempio: def> → def>a.", 14, false));
+        root.addView(text("L4: ? + coppia + > = confronto (a: primo<secondo, b: altrimenti). Esempio: ?ef> → ?ef>a.", 14, false));
 
         state = text("Stato: inizializzazione…", 16, true);
         curriculum = text("Livello: —", 15, true);
@@ -110,7 +110,7 @@ public class MainActivity extends Activity {
 
         root.addView(text("Prova MotorAI", 18, true));
         prompt = new EditText(this);
-        prompt.setHint("Esempi: abc> · ef> · ef>> · ef>>> · dfe>");
+        prompt.setHint("Esempi: abc> · ef> · ef>> · ef>>> · ?ef>");
         prompt.setText("abc>");
         root.addView(prompt);
         Button talk = button("💬 Genera");
