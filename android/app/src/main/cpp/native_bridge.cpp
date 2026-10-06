@@ -32,7 +32,8 @@ Java_it_motorai_seed_MainActivity_nativeEvaluate(JNIEnv* env, jclass) {
     auto tr = g_engine.evaluateTrain();
     auto va = g_engine.evaluateValidation();
     auto te = g_engine.evaluateTest();
-    auto re = g_engine.evaluateRetention();
+    auto r0 = g_engine.evaluateRetentionL0();
+    auto r1 = g_engine.evaluateRetentionL1();
     std::string s = "{\"step\":" + std::to_string(g_engine.globalStep()) +
         ",\"curriculum\":" + std::to_string(g_engine.curriculumLevel()) +
         ",\"parameters\":" + std::to_string(g_engine.parameterCount()) +
@@ -42,7 +43,8 @@ Java_it_motorai_seed_MainActivity_nativeEvaluate(JNIEnv* env, jclass) {
         ",\"val_accuracy\":" + std::to_string(va.answer_accuracy) +
         ",\"test_loss\":" + std::to_string(te.loss) +
         ",\"test_accuracy\":" + std::to_string(te.answer_accuracy) +
-        ",\"retention_accuracy\":" + std::to_string(re.answer_accuracy) + "}";
+        ",\"retention_l0_accuracy\":" + std::to_string(r0.answer_accuracy) +
+        ",\"retention_l1_accuracy\":" + std::to_string(r1.answer_accuracy) + "}";
     return js(env, s);
 }
 
@@ -58,7 +60,8 @@ Java_it_motorai_seed_MainActivity_nativeTrainChunk(JNIEnv* env, jclass, jint ste
         ",\"val_accuracy\":" + std::to_string(r.validation.answer_accuracy) +
         ",\"test_loss\":" + std::to_string(r.test.loss) +
         ",\"test_accuracy\":" + std::to_string(r.test.answer_accuracy) +
-        ",\"retention_accuracy\":" + std::to_string(r.retention.answer_accuracy) +
+        ",\"retention_l0_accuracy\":" + std::to_string(r.retention_l0.answer_accuracy) +
+        ",\"retention_l1_accuracy\":" + std::to_string(r.retention_l1.answer_accuracy) +
         ",\"curriculum\":" + std::to_string(g_engine.curriculumLevel()) +
         ",\"paused\":" + std::string(r.paused ? "true" : "false") + "}";
     return js(env, s);
