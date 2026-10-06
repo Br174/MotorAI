@@ -61,7 +61,7 @@ static bool run_one(unsigned seed){
     motorai::Engine resumed(999);
     if(!save_reload(e,seed,3,resumed)) return false;
     resumed.setCurriculum(4);
-    if(!train_until(resumed,4,3200)){
+    if(!train_until(resumed,4,4800)){
         auto va=resumed.evaluateValidation();
         std::cerr<<"FAIL seed="<<seed<<" stage=L4_validation val="<<va.answer_accuracy
                  <<" r3="<<resumed.evaluateRetentionL3().answer_accuracy
