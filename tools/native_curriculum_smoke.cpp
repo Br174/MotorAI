@@ -10,7 +10,7 @@ static bool accepted(motorai::Engine& e,int level){
     auto r1=e.evaluateRetentionL1();
     auto r2=e.evaluateRetentionL2();
     auto r3=e.evaluateRetentionL3();
-    float required=0.90f;
+    float required=(level>=4)?0.999f:0.90f;
     return va.answer_accuracy>=required &&
            (level<1 || r0.answer_accuracy>=0.90f) &&
            (level<2 || r1.answer_accuracy>=0.90f) &&
