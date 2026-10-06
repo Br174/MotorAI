@@ -452,10 +452,54 @@ void Engine::requestPause(){impl_->pause.store(true);} void Engine::clearPause()
 
 TrainResult Engine::train(int steps,int batch,float lr){
     std::lock_guard<std::mutex> guard(impl_->mu);
-    clearPause(); auto t0=std::chrono::steady_clock::now(); std::mt19937 r(impl_->seed+1+impl_->step); int done=0;
-    float effective_lr = (impl_->curriculum>=2) ? lr*0.75f : lr;
-    for(int s=0;s<steps;++s){ if(impl_->pause.load())break; impl_->model.zeroGrad(); for(int b=0;b<batch;++b){auto&e=impl_->data.train[deterministicIndex(r, impl_->data.train.size())]; Tensor L=(impl_->curriculum<=0)?impl_->model.loss(e.x,e.y):impl_->model.lossRange(e.x,e.y,e.answer_start,e.answer_len+1); backward(L);} ++impl_->step; impl_->model.adamStep(effective_lr,batch,impl_->step); ++done; }
-    auto t1=std::chrono::steady_clock::now(); TrainResult tr; tr.steps_completed=done; tr.train=eval(impl_->model,impl_->data.train); tr.validation=eval(impl_->model,impl_->data.val); tr.test=eval(impl_->model,impl_->data.test); tr.retention_l0=eval(impl_->model,impl_->data.retention_l0); tr.retention_l1=eval(impl_->model,impl_->data.retention_l1); tr.elapsed_seconds=std::chrono::duration<double>(t1-t0).count(); tr.paused=impl_->pause.load(); return tr;
+    clearPause();
+    auto t0=std::chrono::steady_clock::now();
+    std::mt19937 r(impl_->seed+1+impl_->step);
+    int done=0;
+    float effective_lr=(impl_->curriculum>=2)?lr*0.75f:lr;
+
+    for(int s=0;s<steps;++s){
+        if(impl_->pause.load()) break;
+        impl_->model.zeroGrad();
+
+        for(int b=0;b<batch;++b){
+            size_t idx=0;
+            if(impl_->curriculum==1 && impl_->data.train.size()>=96){
+                // 50% nuovo L1 + 50% replay L0.
+                if(b < batch/2) idx=deterministicIndex(r,48);
+                else idx=48+deterministicIndex(r,48);
+            }else if(impl_->curriculum>=2 && impl_->data.train.size()>=192){
+                // L2 50%, replay L1 25%, replay L0 25%.
+                if(b < batch/2) idx=deterministicIndex(r,72);
+                else if(b < (batch*3)/4) idx=72+deterministicIndex(r,48);
+                else idx=120+deterministicIndex(r,72);
+            }else{
+                idx=deterministicIndex(r,impl_->data.train.size());
+            }
+
+            auto&e=impl_->data.train[idx];
+            Tensor L=(impl_->curriculum<=0)
+                ?impl_->model.loss(e.x,e.y)
+                :impl_->model.lossRange(e.x,e.y,e.answer_start,e.answer_len+1);
+            backward(L);
+        }
+
+        ++impl_->step;
+        impl_->model.adamStep(effective_lr,batch,impl_->step);
+        ++done;
+    }
+
+    auto t1=std::chrono::steady_clock::now();
+    TrainResult tr;
+    tr.steps_completed=done;
+    tr.train=eval(impl_->model,impl_->data.train);
+    tr.validation=eval(impl_->model,impl_->data.val);
+    // TEST volutamente non consultato durante il training.
+    tr.retention_l0=eval(impl_->model,impl_->data.retention_l0);
+    tr.retention_l1=eval(impl_->model,impl_->data.retention_l1);
+    tr.elapsed_seconds=std::chrono::duration<double>(t1-t0).count();
+    tr.paused=impl_->pause.load();
+    return tr;
 }
 
 std::string Engine::generate(const std::string&prefix,int new_chars){
@@ -471,7 +515,7 @@ bool Engine::saveCheckpoint(const std::string&dir) const{
     try{
         std::filesystem::create_directories(dir);
         std::ofstream w(dir+"/weights.bin",std::ios::binary); if(!w)return false;
-        const char magic[8]={'M','O','T','A','I','0','0','6'}; w.write(magic,8);
+        const char magic[8]={'M','O','T','A','I','0','0','7'}; w.write(magic,8);
         uint32_t ver=2,seed=impl_->seed,step=impl_->step,level=impl_->curriculum,pc=impl_->model.p.size();
         w.write((char*)&ver,4); w.write((char*)&seed,4); w.write((char*)&step,4); w.write((char*)&level,4); w.write((char*)&pc,4);
         for(auto&z:impl_->model.p){
@@ -481,14 +525,14 @@ bool Engine::saveCheckpoint(const std::string&dir) const{
             w.write((char*)z.m.data(),sz*sizeof(float)); w.write((char*)z.v.data(),sz*sizeof(float));
         }
         w.close();
-        Metrics te=eval(const_cast<TinyTransformer&>(impl_->model),impl_->data.test);
+        Metrics va=eval(const_cast<TinyTransformer&>(impl_->model),impl_->data.val);
         Metrics r0=eval(const_cast<TinyTransformer&>(impl_->model),impl_->data.retention_l0);
         Metrics r1=eval(const_cast<TinyTransformer&>(impl_->model),impl_->data.retention_l1);
         std::ofstream j(dir+"/checkpoint.json");
         j<<"{\n  \"format\": \"MOTORAI_CHECKPOINT_NATIVE_V2\",\n  \"seed\": "<<impl_->seed
          <<",\n  \"global_step\": "<<impl_->step<<",\n  \"curriculum_level\": "<<impl_->curriculum
          <<",\n  \"parameter_count\": "<<impl_->model.parameterCount()
-         <<",\n  \"test_loss\": "<<te.loss<<",\n  \"test_answer_accuracy\": "<<te.answer_accuracy
+         <<",\n  \"validation_loss\": "<<va.loss<<",\n  \"validation_answer_accuracy\": "<<va.answer_accuracy
          <<",\n  \"retention_l0_accuracy\": "<<r0.answer_accuracy
          <<",\n  \"retention_l1_accuracy\": "<<r1.answer_accuracy
          <<",\n  \"pretrained_model\": false,\n  \"weights_origin\": \"random_then_local_training\"\n}\n";
@@ -506,7 +550,7 @@ bool Engine::loadCheckpoint(const std::string&dir){
             w.read((char*)&ver,4); w.read((char*)&seed,4); w.read((char*)&step,4); w.read((char*)&pc,4);
             if(ver!=1) return false;
             level=0;
-        }else if(m=="MOTAI005" || m=="MOTAI006"){
+        }else if(m=="MOTAI005" || m=="MOTAI006" || m=="MOTAI007"){
             w.read((char*)&ver,4); w.read((char*)&seed,4); w.read((char*)&step,4); w.read((char*)&level,4); w.read((char*)&pc,4);
             if(ver!=2 || level>2) return false;
         }else return false;
