@@ -46,12 +46,13 @@ Java_it_motorai_seed_MainActivity_nativeEvaluate(JNIEnv* env, jclass) {
 extern "C" JNIEXPORT jstring JNICALL
 Java_it_motorai_seed_MainActivity_nativeTrainChunk(JNIEnv* env, jclass, jint steps) {
     std::lock_guard<std::mutex> g(g_engine_call_mu);
-    auto r = g_engine.train(static_cast<int>(steps), 24, 0.01f);
+    auto r = g_engine.train(static_cast<int>(steps), 24, 0.001f);
     std::string s = "{\"steps_completed\":" + std::to_string(r.steps_completed) +
         ",\"step\":" + std::to_string(g_engine.globalStep()) +
         ",\"elapsed_seconds\":" + std::to_string(r.elapsed_seconds) +
         ",\"train_loss\":" + std::to_string(r.train.loss) +
         ",\"val_loss\":" + std::to_string(r.validation.loss) +
+        ",\"val_accuracy\":" + std::to_string(r.validation.answer_accuracy) +
         ",\"test_loss\":" + std::to_string(r.test.loss) +
         ",\"test_accuracy\":" + std::to_string(r.test.answer_accuracy) +
         ",\"paused\":" + std::string(r.paused ? "true" : "false") + "}";
