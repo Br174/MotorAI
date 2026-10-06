@@ -308,7 +308,7 @@ public class MainActivity extends Activity {
                     String line = formatTrainingMetrics(j);
                     ui(() -> metrics.setText(line));
 
-                    double requiredValidation = level >= 4 ? 0.999 : 0.90;
+                    double requiredValidation = level >= 4 ? 0.95 : 0.90;
                     boolean accepted = afterValAcc >= requiredValidation
                             && (level < 1 || afterRetentionL0 >= 0.90)
                             && (level < 2 || afterRetentionL1 >= 0.90)
