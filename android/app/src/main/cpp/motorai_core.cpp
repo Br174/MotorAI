@@ -333,7 +333,7 @@ struct Example {
 };
 
 struct Dataset {
-    std::vector<Example> train,val,test,retention_l0,retention_l1;
+    std::vector<Example> train,val,test,retention_l0,retention_l1,retention_l2;
 
     static int id(char c){ if(c=='\n')return 0; if(c=='>')return 1; if(c>='a'&&c<='i')return 2+(c-'a'); return -1; }
     static char ch(int id){ if(id==0)return '\n'; if(id==1)return '>'; if(id>=2&&id<=10)return char('a'+id-2); return '?'; }
@@ -360,20 +360,26 @@ struct Dataset {
         }
     }
 
-    static void buildPairs(uint32_t seed,bool level2,std::vector<Example>&tr,std::vector<Example>&va,std::vector<Example>&te){
+    static void buildPairs(uint32_t seed,int task,std::vector<Example>&tr,std::vector<Example>&va,std::vector<Example>&te){
         std::vector<std::string> pairs; std::string symbols="abcdefghi";
         for(char a:symbols)for(char b:symbols)if(a!=b){ std::string p; p+=a; p+=b; pairs.push_back(p); }
         std::mt19937 r(seed); deterministicShuffle(pairs,r);
         for(size_t i=0;i<pairs.size();++i){
             std::string out;
-            if(level2){
-                out.push_back(pairs[i][0]);
-                out.push_back(pairs[i][0]);
-            }else{
+            std::string sep=">";
+            if(task==1){
                 out=pairs[i];
                 std::reverse(out.begin(),out.end());
+            }else if(task==2){
+                out.push_back(pairs[i][0]);
+                out.push_back(pairs[i][0]);
+                sep=">>";
+            }else{
+                out.push_back(pairs[i][1]);
+                out.push_back(pairs[i][1]);
+                sep=">>>";
             }
-            std::string raw=pairs[i]+(level2?">>":">")+out+"\n";
+            std::string raw=pairs[i]+sep+out+"\n";
             if(i<48) tr.push_back(encode(raw));
             else if(i<60) va.push_back(encode(raw));
             else te.push_back(encode(raw));
@@ -383,28 +389,40 @@ struct Dataset {
         std::vector<Example> l0tr,l0va,l0te;
         std::vector<Example> l1tr,l1va,l1te;
         std::vector<Example> l2tr,l2va,l2te;
+        std::vector<Example> l3tr,l3va,l3te;
         buildCopy3(seed,l0tr,l0va,l0te);
-        buildPairs(seed+1009,false,l1tr,l1va,l1te);
-        buildPairs(seed+2027,true,l2tr,l2va,l2te);
+        buildPairs(seed+1009,1,l1tr,l1va,l1te);
+        buildPairs(seed+2027,2,l2tr,l2va,l2te);
+        buildPairs(seed+3037,3,l3tr,l3va,l3te);
 
         retention_l0=l0te;
         retention_l1=l1te;
+        retention_l2=l2te;
 
         if(level<=0){
             train=std::move(l0tr); val=std::move(l0va); test=std::move(l0te);
-            retention_l1.clear();
+            retention_l1.clear(); retention_l2.clear();
             return;
         }
         if(level==1){
             train=l1tr; val=l1va; test=l1te;
+            retention_l2.clear();
             for(size_t i=0;i<48 && i<l0tr.size();++i) train.push_back(l0tr[i]);
             return;
         }
+        if(level==2){
+            train=l2tr; val=l2va; test=l2te;
+            for(size_t i=0;i<24 && i<l2tr.size();++i) train.push_back(l2tr[i]);
+            for(size_t i=0;i<48 && i<l1tr.size();++i) train.push_back(l1tr[i]);
+            for(size_t i=0;i<72 && i<l0tr.size();++i) train.push_back(l0tr[i]);
+            return;
+        }
 
-        // Livello 2: seleziona e duplica il primo simbolo con doppio separatore, più replay bilanciato.
-        train=l2tr; val=l2va; test=l2te;
-        // Peso L2 leggermente maggiore, replay L1 pieno e replay L0 rinforzato.
-        for(size_t i=0;i<24 && i<l2tr.size();++i) train.push_back(l2tr[i]);
+        // Livello 3: duplica il secondo simbolo, preservando L2/L1/L0.
+        // Layout per batch deterministico: L3(72), L2(48), L1(48), L0(72).
+        train=l3tr; val=l3va; test=l3te;
+        for(size_t i=0;i<24 && i<l3tr.size();++i) train.push_back(l3tr[i]);
+        for(size_t i=0;i<48 && i<l2tr.size();++i) train.push_back(l2tr[i]);
         for(size_t i=0;i<48 && i<l1tr.size();++i) train.push_back(l1tr[i]);
         for(size_t i=0;i<72 && i<l0tr.size();++i) train.push_back(l0tr[i]);
     }
@@ -432,8 +450,8 @@ std::string esc(const std::string&s){ std::string o; for(char c:s){ if(c=='\\'||
 
 class Engine::Impl {
 public:
-    uint32_t seed=174; TinyTransformer model; int curriculum=0; Dataset data; int step=0; std::atomic<bool> pause{false}; mutable std::mutex mu;
-    explicit Impl(uint32_t s):seed(s),model(s),curriculum(0),data(s,0){}
+    uint32_t seed=174; TinyTransformer model; int curriculum=0; int curriculum_start_step=0; Dataset data; int step=0; std::atomic<bool> pause{false}; mutable std::mutex mu;
+    explicit Impl(uint32_t s):seed(s),model(s),curriculum(0),curriculum_start_step(0),data(s,0){}
 };
 
 Engine::Engine(uint32_t seed):impl_(std::make_unique<Impl>(seed)){}
@@ -444,10 +462,12 @@ Metrics Engine::evaluateValidation(){ std::lock_guard<std::mutex> g(impl_->mu); 
 Metrics Engine::evaluateTest(){ std::lock_guard<std::mutex> g(impl_->mu); return eval(impl_->model,impl_->data.test); }
 Metrics Engine::evaluateRetentionL0(){ std::lock_guard<std::mutex> g(impl_->mu); return eval(impl_->model,impl_->data.retention_l0); }
 Metrics Engine::evaluateRetentionL1(){ std::lock_guard<std::mutex> g(impl_->mu); return eval(impl_->model,impl_->data.retention_l1); }
+Metrics Engine::evaluateRetentionL2(){ std::lock_guard<std::mutex> g(impl_->mu); return eval(impl_->model,impl_->data.retention_l2); }
 int Engine::parameterCount() const{return impl_->model.parameterCount();}
 int Engine::globalStep() const{return impl_->step;}
-void Engine::setCurriculum(int level){ std::lock_guard<std::mutex> g(impl_->mu); level=std::max(0,std::min(2,level)); if(impl_->curriculum==level)return; impl_->curriculum=level; impl_->model.resetOptimizerMoments(); impl_->data=Dataset(impl_->seed,level); }
+void Engine::setCurriculum(int level){ std::lock_guard<std::mutex> g(impl_->mu); level=std::max(0,std::min(3,level)); if(impl_->curriculum==level)return; impl_->curriculum=level; impl_->curriculum_start_step=impl_->step; impl_->model.resetOptimizerMoments(); impl_->data=Dataset(impl_->seed,level); }
 int Engine::curriculumLevel() const{ std::lock_guard<std::mutex> g(impl_->mu); return impl_->curriculum; }
+int Engine::curriculumStartStep() const{ std::lock_guard<std::mutex> g(impl_->mu); return impl_->curriculum_start_step; }
 void Engine::requestPause(){impl_->pause.store(true);} void Engine::clearPause(){impl_->pause.store(false);}
 
 TrainResult Engine::train(int steps,int batch,float lr){
@@ -456,7 +476,7 @@ TrainResult Engine::train(int steps,int batch,float lr){
     auto t0=std::chrono::steady_clock::now();
     std::mt19937 r(impl_->seed+1+impl_->step);
     int done=0;
-    float effective_lr=(impl_->curriculum>=2)?lr*0.75f:lr;
+    float effective_lr=(impl_->curriculum>=3)?lr*0.65f:((impl_->curriculum>=2)?lr*0.75f:lr);
 
     for(int s=0;s<steps;++s){
         if(impl_->pause.load()) break;
@@ -468,11 +488,17 @@ TrainResult Engine::train(int steps,int batch,float lr){
                 // 50% nuovo L1 + 50% replay L0.
                 if(b < batch/2) idx=deterministicIndex(r,48);
                 else idx=48+deterministicIndex(r,48);
-            }else if(impl_->curriculum>=2 && impl_->data.train.size()>=192){
+            }else if(impl_->curriculum==2 && impl_->data.train.size()>=192){
                 // L2 50%, replay L1 25%, replay L0 25%.
                 if(b < batch/2) idx=deterministicIndex(r,72);
                 else if(b < (batch*3)/4) idx=72+deterministicIndex(r,48);
                 else idx=120+deterministicIndex(r,72);
+            }else if(impl_->curriculum>=3 && impl_->data.train.size()>=240){
+                // L3 50%, L2/L1/L0 ciascuno circa 1/6.
+                if(b < batch/2) idx=deterministicIndex(r,72);
+                else if(b < 16) idx=72+deterministicIndex(r,48);
+                else if(b < 20) idx=120+deterministicIndex(r,48);
+                else idx=168+deterministicIndex(r,72);
             }else{
                 idx=deterministicIndex(r,impl_->data.train.size());
             }
@@ -497,6 +523,7 @@ TrainResult Engine::train(int steps,int batch,float lr){
     // TEST volutamente non consultato durante il training.
     tr.retention_l0=eval(impl_->model,impl_->data.retention_l0);
     tr.retention_l1=eval(impl_->model,impl_->data.retention_l1);
+    tr.retention_l2=eval(impl_->model,impl_->data.retention_l2);
     tr.elapsed_seconds=std::chrono::duration<double>(t1-t0).count();
     tr.paused=impl_->pause.load();
     return tr;
@@ -515,9 +542,9 @@ bool Engine::saveCheckpoint(const std::string&dir) const{
     try{
         std::filesystem::create_directories(dir);
         std::ofstream w(dir+"/weights.bin",std::ios::binary); if(!w)return false;
-        const char magic[8]={'M','O','T','A','I','0','0','7'}; w.write(magic,8);
-        uint32_t ver=2,seed=impl_->seed,step=impl_->step,level=impl_->curriculum,pc=impl_->model.p.size();
-        w.write((char*)&ver,4); w.write((char*)&seed,4); w.write((char*)&step,4); w.write((char*)&level,4); w.write((char*)&pc,4);
+        const char magic[8]={'M','O','T','A','I','0','0','8'}; w.write(magic,8);
+        uint32_t ver=3,seed=impl_->seed,step=impl_->step,level=impl_->curriculum,start_step=impl_->curriculum_start_step,pc=impl_->model.p.size();
+        w.write((char*)&ver,4); w.write((char*)&seed,4); w.write((char*)&step,4); w.write((char*)&level,4); w.write((char*)&start_step,4); w.write((char*)&pc,4);
         for(auto&z:impl_->model.p){
             uint32_t nl=z.name.size(),sz=z.value.n->data.size();
             w.write((char*)&nl,4); w.write(z.name.data(),nl); w.write((char*)&sz,4);
@@ -528,6 +555,7 @@ bool Engine::saveCheckpoint(const std::string&dir) const{
         Metrics va=eval(const_cast<TinyTransformer&>(impl_->model),impl_->data.val);
         Metrics r0=eval(const_cast<TinyTransformer&>(impl_->model),impl_->data.retention_l0);
         Metrics r1=eval(const_cast<TinyTransformer&>(impl_->model),impl_->data.retention_l1);
+        Metrics r2=eval(const_cast<TinyTransformer&>(impl_->model),impl_->data.retention_l2);
         std::ofstream j(dir+"/checkpoint.json");
         j<<"{\n  \"format\": \"MOTORAI_CHECKPOINT_NATIVE_V2\",\n  \"seed\": "<<impl_->seed
          <<",\n  \"global_step\": "<<impl_->step<<",\n  \"curriculum_level\": "<<impl_->curriculum
@@ -535,6 +563,7 @@ bool Engine::saveCheckpoint(const std::string&dir) const{
          <<",\n  \"validation_loss\": "<<va.loss<<",\n  \"validation_answer_accuracy\": "<<va.answer_accuracy
          <<",\n  \"retention_l0_accuracy\": "<<r0.answer_accuracy
          <<",\n  \"retention_l1_accuracy\": "<<r1.answer_accuracy
+         <<",\n  \"retention_l2_accuracy\": "<<r2.answer_accuracy
          <<",\n  \"pretrained_model\": false,\n  \"weights_origin\": \"random_then_local_training\"\n}\n";
         return (bool)j;
     }catch(...){return false;}
@@ -545,7 +574,7 @@ bool Engine::loadCheckpoint(const std::string&dir){
     try{
         std::ifstream w(dir+"/weights.bin",std::ios::binary); if(!w)return false;
         char magic[8]; w.read(magic,8); std::string m(magic,8);
-        uint32_t ver=0,seed=0,step=0,level=0,pc=0;
+        uint32_t ver=0,seed=0,step=0,level=0,start_step=0,pc=0;
         if(m=="MOTAI004"){
             w.read((char*)&ver,4); w.read((char*)&seed,4); w.read((char*)&step,4); w.read((char*)&pc,4);
             if(ver!=1) return false;
@@ -553,6 +582,10 @@ bool Engine::loadCheckpoint(const std::string&dir){
         }else if(m=="MOTAI005" || m=="MOTAI006" || m=="MOTAI007"){
             w.read((char*)&ver,4); w.read((char*)&seed,4); w.read((char*)&step,4); w.read((char*)&level,4); w.read((char*)&pc,4);
             if(ver!=2 || level>2) return false;
+            start_step=(level<=0)?0:((level==1)?220:620);
+        }else if(m=="MOTAI008"){
+            w.read((char*)&ver,4); w.read((char*)&seed,4); w.read((char*)&step,4); w.read((char*)&level,4); w.read((char*)&start_step,4); w.read((char*)&pc,4);
+            if(ver!=3 || level>3 || start_step>step) return false;
         }else return false;
         if(pc!=impl_->model.p.size())return false;
         for(auto&z:impl_->model.p){
@@ -562,18 +595,18 @@ bool Engine::loadCheckpoint(const std::string&dir){
             w.read((char*)z.m.data(),sz*sizeof(float)); w.read((char*)z.v.data(),sz*sizeof(float));
         }
         if(!w)return false;
-        impl_->seed=seed; impl_->curriculum=static_cast<int>(level); impl_->data=Dataset(seed,impl_->curriculum); impl_->step=step;
+        impl_->seed=seed; impl_->curriculum=static_cast<int>(level); impl_->curriculum_start_step=static_cast<int>(start_step); impl_->data=Dataset(seed,impl_->curriculum); impl_->step=step;
         return true;
     }catch(...){return false;}
 }
 
 std::string Engine::statusJson() const{
     std::lock_guard<std::mutex> guard(impl_->mu);
-    Metrics te=eval(impl_->model,impl_->data.test), r0=eval(impl_->model,impl_->data.retention_l0), r1=eval(impl_->model,impl_->data.retention_l1);
+    Metrics te=eval(impl_->model,impl_->data.test), r0=eval(impl_->model,impl_->data.retention_l0), r1=eval(impl_->model,impl_->data.retention_l1), r2=eval(impl_->model,impl_->data.retention_l2);
     std::ostringstream s; s<<std::fixed<<std::setprecision(4)
-      <<"{\"seed\":"<<impl_->seed<<",\"step\":"<<impl_->step<<",\"curriculum\":"<<impl_->curriculum
+      <<"{\"seed\":"<<impl_->seed<<",\"step\":"<<impl_->step<<",\"curriculum\":"<<impl_->curriculum<<",\"curriculum_start_step\":"<<impl_->curriculum_start_step
       <<",\"parameters\":"<<parameterCount()<<",\"test_loss\":"<<te.loss<<",\"test_accuracy\":"<<te.answer_accuracy
-      <<",\"retention_l0_accuracy\":"<<r0.answer_accuracy<<",\"retention_l1_accuracy\":"<<r1.answer_accuracy<<",\"pretrained\":false}";
+      <<",\"retention_l0_accuracy\":"<<r0.answer_accuracy<<",\"retention_l1_accuracy\":"<<r1.answer_accuracy<<",\"retention_l2_accuracy\":"<<r2.answer_accuracy<<",\"pretrained\":false}";
     return s.str();
 }
 
