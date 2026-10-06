@@ -270,7 +270,7 @@ struct Param {
 
 class TinyTransformer {
 public:
-    int vocab=12, context=7, d=32, ff=64;
+    int vocab=14, context=7, d=32, ff=64;
     std::vector<Param> p;
     std::mt19937 rng;
     std::mt19937 extra_rng;
@@ -289,7 +289,7 @@ public:
         std::vector<float> data(vocab*d,0.0f);
         // Gli 11 token storici consumano esattamente lo stesso stream RNG della Seed009.
         for(int i=0;i<11*d;++i) data[i]=0.02f*deterministicNormalApprox(rng);
-        for(int j=0;j<d;++j) data[11*d+j]=0.02f*deterministicNormalApprox(extra_rng);
+        for(int row=11;row<vocab;++row) for(int j=0;j<d;++j) data[row*d+j]=0.02f*deterministicNormalApprox(extra_rng);
         Tensor t=tensor({vocab,d},std::move(data),true);
         p.push_back({"token",t,std::vector<float>(t.size(),0),std::vector<float>(t.size(),0)});
     }
@@ -297,7 +297,7 @@ public:
         std::vector<float> data(d*vocab,0.0f);
         for(int i=0;i<d;++i){
             for(int j=0;j<11;++j) data[i*vocab+j]=0.02f*deterministicNormalApprox(rng);
-            data[i*vocab+11]=0.0f; // token comando non deve mai essere una risposta.
+            for(int j=11;j<vocab;++j) data[i*vocab+j]=0.0f; // nuovi output iniziano neutri.
         }
         Tensor t=tensor({d,vocab},std::move(data),true);
         p.push_back({"head.w",t,std::vector<float>(t.size(),0),std::vector<float>(t.size(),0)});
@@ -339,7 +339,18 @@ public:
         Tensor xg=add(x2,gd);
         Tensor zf=layerNorm(xg,P("lnf.g"),P("lnf.b"));
         Tensor logits=matmul(zf,P("head.w"));
-        for(int i=0;i<logits.dim(0);++i) logits.n->data[i*vocab+11]=-1e9f;
+        bool control=!ids.empty() && ids[0]==11;
+        for(int i=0;i<logits.dim(0);++i){
+            logits.n->data[i*vocab+11]=-1e9f; // ? è solo input
+            if(control){
+                // Nel compito confronto le sole uscite legali sono newline, + e -.
+                for(int j=1;j<=10;++j) logits.n->data[i*vocab+j]=-1e9f;
+            }else{
+                // Nei livelli storici + e - non possono comparire.
+                logits.n->data[i*vocab+12]=-1e9f;
+                logits.n->data[i*vocab+13]=-1e9f;
+            }
+        }
         return logits;
     }
     Tensor loss(const std::vector<int>& x,const std::vector<int>& y){ return crossEntropy(forward(x),y); }
@@ -352,7 +363,7 @@ public:
         if(z.name=="token" && i>=static_cast<size_t>(11*d)) return 1.0f;
         if(z.name=="head.w"){
             size_t col=i%static_cast<size_t>(vocab);
-            if(col==2 || col==3) return 1.0f; // classi a/b del confronto
+            if(col==12 || col==13) return 1.0f; // classi +/- del confronto
         }
         return 0.10f; // adattamento lento del cervello storico
     }
@@ -386,8 +397,8 @@ struct Example {
 struct Dataset {
     std::vector<Example> train,val,test,retention_l0,retention_l1,retention_l2,retention_l3;
 
-    static int id(char c){ if(c=='\n')return 0; if(c=='>')return 1; if(c>='a'&&c<='i')return 2+(c-'a'); if(c=='?')return 11; return -1; }
-    static char ch(int id){ if(id==0)return '\n'; if(id==1)return '>'; if(id>=2&&id<=10)return char('a'+id-2); if(id==11)return '?'; return '?'; }
+    static int id(char c){ if(c=='\n')return 0; if(c=='>')return 1; if(c>='a'&&c<='i')return 2+(c-'a'); if(c=='?')return 11; if(c=='+')return 12; if(c=='-')return 13; return -1; }
+    static char ch(int id){ if(id==0)return '\n'; if(id==1)return '>'; if(id>=2&&id<=10)return char('a'+id-2); if(id==11)return '?'; if(id==12)return '+'; if(id==13)return '-'; return '?'; }
 
     static Example encode(const std::string&s){
         std::vector<int>a;
@@ -444,7 +455,7 @@ struct Dataset {
         }
         std::mt19937 r(seed); deterministicShuffle(pairs,r);
         for(size_t i=0;i<pairs.size();++i){
-            char label=(pairs[i][0] < pairs[i][1]) ? 'a' : 'b';
+            char label=(pairs[i][0] < pairs[i][1]) ? '+' : '-';
             std::string out(1,label);
             std::string raw="?"+pairs[i]+">"+out+"\n";
             if(i<48) tr.push_back(encode(raw));
@@ -500,7 +511,7 @@ struct Dataset {
             return;
         }
 
-        // Livello 4: token comando "?" + classificazione binaria (a=primo<secondo, b=altrimenti).
+        // Livello 4: token comando "?" + classificazione binaria (+=primo<secondo, -=altrimenti).
         // Layout: L4(72), L3(48), L2(48), L1(48), L0(72).
         train=l4tr; val=l4va; test=l4te;
         for(size_t i=0;i<24 && i<l4tr.size();++i) train.push_back(l4tr[i]);
@@ -698,14 +709,15 @@ bool Engine::loadCheckpoint(const std::string&dir){
             size_t target=it->value.n->data.size();
             if(target==sz){
                 it->value.n->data=data; it->m=mm; it->v=vv;
-            }else if(name=="token" && sz==11u*32u && target==12u*32u){
+            }else if(name=="token" && sz==11u*32u && target==static_cast<size_t>(vocab*32)){
                 for(size_t i=0;i<sz;++i){it->value.n->data[i]=data[i];it->m[i]=mm[i];it->v[i]=vv[i];}
-            }else if(name=="head.w" && sz==32u*11u && target==32u*12u){
+            }else if(name=="head.w" && sz==32u*11u && target==static_cast<size_t>(32*vocab)){
                 for(size_t row=0;row<32;++row) for(size_t col=0;col<11;++col){
-                    size_t src=row*11+col,dst=row*12+col;
+                    size_t src=row*11+col,dst=row*static_cast<size_t>(vocab)+col;
                     it->value.n->data[dst]=data[src]; it->m[dst]=mm[src]; it->v[dst]=vv[src];
                 }
-                for(size_t row=0;row<32;++row) it->value.n->data[row*12+11]=0.0f;
+                for(size_t row=0;row<32;++row) for(int col=11;col<vocab;++col)
+                    it->value.n->data[row*static_cast<size_t>(vocab)+col]=0.0f;
             }else return false;
         }
         if(!w)return false;
