@@ -3,3 +3,5 @@ __pycache__/
 .venv/
 .DS_Store
 checkpoints/*/tmp/
+
+android/app/motorai-lab.keystore
