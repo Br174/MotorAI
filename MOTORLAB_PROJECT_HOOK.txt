@@ -9,5 +9,5 @@ PROJECT_NATIVE_ENGINE=MotorAI-Brain
 PROJECT_NATIVE_ENGINE_POLICY=coexist-preserve
 SPECIALIZED_SATELLITE=MotorLab-Training
 CENTRAL_MUTATION_POLICY=do-not-auto-propagate-motorai-specific-training-innovations
-PROJECT_CONTINUITY=local-first-until-central-ledger-is-registered
+PROJECT_CONTINUITY=MOTORLAB_PROJECT_STATE_MOTORAI_V1.txt
 POLLICINO=external-control-plane-only
