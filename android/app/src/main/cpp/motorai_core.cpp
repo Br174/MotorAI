@@ -449,19 +449,41 @@ struct Dataset {
     }
 
     static void buildMarkedCompare(uint32_t seed,std::vector<Example>&tr,std::vector<Example>&va,std::vector<Example>&te){
-        std::vector<std::string> pairs; std::string symbols="abcdefghi";
-        for(char a:symbols)for(char b:symbols)if(a!=b){
-            std::string p; p+=a; p+=b; pairs.push_back(p);
+        std::string symbols="abcdefghi";
+        std::vector<std::string> positives,negatives;
+
+        // Positivi: primo == terzo, con simbolo centrale diverso come distrattore.
+        for(char a:symbols) for(char mid:symbols) if(mid!=a){
+            std::string q; q+=a; q+=mid; q+=a;
+            positives.push_back(q);
         }
-        std::mt19937 r(seed); deterministicShuffle(pairs,r);
-        for(size_t i=0;i<pairs.size();++i){
-            char label=(pairs[i][0] < pairs[i][1]) ? '+' : '-';
+
+        // Negativi: primo != terzo; il simbolo centrale è un distrattore.
+        for(char a:symbols) for(char mid:symbols) for(char z:symbols)
+            if(a!=z && mid!=a && mid!=z){
+                std::string q; q+=a; q+=mid; q+=z;
+                negatives.push_back(q);
+            }
+
+        std::mt19937 r(seed);
+        deterministicShuffle(positives,r);
+        deterministicShuffle(negatives,r);
+        negatives.resize(positives.size()); // 72 + 72, perfettamente bilanciato.
+
+        auto append=[&](const std::string& q,char label,std::vector<Example>& dst){
             std::string out(1,label);
-            std::string raw="?"+pairs[i]+">"+out+"\n";
-            if(i<48) tr.push_back(encode(raw));
-            else if(i<60) va.push_back(encode(raw));
-            else te.push_back(encode(raw));
+            dst.push_back(encode("?"+q+">"+out+"\n"));
+        };
+
+        // Split stratificato: TRAIN 96 (48+/48-), VAL 24, TEST 24.
+        for(size_t i=0;i<72;++i){
+            if(i<48){ append(positives[i],'+',tr); append(negatives[i],'-',tr); }
+            else if(i<60){ append(positives[i],'+',va); append(negatives[i],'-',va); }
+            else { append(positives[i],'+',te); append(negatives[i],'-',te); }
         }
+        deterministicShuffle(tr,r);
+        deterministicShuffle(va,r);
+        deterministicShuffle(te,r);
     }
     explicit Dataset(uint32_t seed,int level=0){
         std::vector<Example> l0tr,l0va,l0te;
@@ -511,10 +533,9 @@ struct Dataset {
             return;
         }
 
-        // Livello 4: token comando "?" + classificazione binaria (+=primo<secondo, -=altrimenti).
+        // Livello 4: token comando "?" + classificazione strutturale (+=primo==terzo, -=diverso).
         // Layout: L4(72), L3(48), L2(48), L1(48), L0(72).
         train=l4tr; val=l4va; test=l4te;
-        for(size_t i=0;i<24 && i<l4tr.size();++i) train.push_back(l4tr[i]);
         for(size_t i=0;i<48 && i<l3tr.size();++i) train.push_back(l3tr[i]);
         for(size_t i=0;i<48 && i<l2tr.size();++i) train.push_back(l2tr[i]);
         for(size_t i=0;i<48 && i<l1tr.size();++i) train.push_back(l1tr[i]);
@@ -594,13 +615,13 @@ TrainResult Engine::train(int steps,int batch,float lr){
                 else if(b < 16) idx=72+deterministicIndex(r,48);
                 else if(b < 20) idx=120+deterministicIndex(r,48);
                 else idx=168+deterministicIndex(r,72);
-            }else if(impl_->curriculum>=4 && impl_->data.train.size()>=288){
-                // L4 rinforzato: 14/24 nuovo, poi replay 3 L3 + 3 L2 + 2 L1 + 2 L0.
-                if(b < 14) idx=deterministicIndex(r,72);
-                else if(b < 17) idx=72+deterministicIndex(r,48);
-                else if(b < 20) idx=120+deterministicIndex(r,48);
-                else if(b < 22) idx=168+deterministicIndex(r,48);
-                else idx=216+deterministicIndex(r,72);
+            }else if(impl_->curriculum>=4 && impl_->data.train.size()>=312){
+                // L4 14/24, poi replay L3 3 + L2 3 + L1 2 + L0 2.
+                if(b < 14) idx=deterministicIndex(r,96);
+                else if(b < 17) idx=96+deterministicIndex(r,48);
+                else if(b < 20) idx=144+deterministicIndex(r,48);
+                else if(b < 22) idx=192+deterministicIndex(r,48);
+                else idx=240+deterministicIndex(r,72);
             }else{
                 idx=deterministicIndex(r,impl_->data.train.size());
             }
