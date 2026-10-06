@@ -361,19 +361,43 @@ struct Dataset {
     }
 
     static void buildPairs(uint32_t seed,bool sorted,std::vector<Example>&tr,std::vector<Example>&va,std::vector<Example>&te){
-        std::vector<std::string> pairs; std::string symbols="abcdefghi";
-        for(char a:symbols)for(char b:symbols)if(a!=b){ std::string p; p+=a; p+=b; pairs.push_back(p); }
-        std::mt19937 r(seed); deterministicShuffle(pairs,r);
-        for(size_t i=0;i<pairs.size();++i){
-            std::string out=pairs[i];
-            if(sorted){
-                if(out[0]>out[1]) std::swap(out[0],out[1]);
-            }else{
-                std::reverse(out.begin(),out.end());
+        std::string symbols="abcdefghi";
+        if(!sorted){
+            std::vector<std::string> pairs;
+            for(char a:symbols)for(char b:symbols)if(a!=b){ std::string p; p+=a; p+=b; pairs.push_back(p); }
+            std::mt19937 r(seed); deterministicShuffle(pairs,r);
+            for(size_t i=0;i<pairs.size();++i){
+                std::string out=pairs[i]; std::reverse(out.begin(),out.end());
+                std::string raw=pairs[i]+">"+out+"\n";
+                if(i<48) tr.push_back(encode(raw));
+                else if(i<60) va.push_back(encode(raw));
+                else te.push_back(encode(raw));
             }
-            std::string raw=pairs[i]+(sorted?">>":">")+out+"\n";
-            if(i<48) tr.push_back(encode(raw));
-            else if(i<60) va.push_back(encode(raw));
+            return;
+        }
+
+        // L2 graduale: tutte le coppie non ordinate sono viste in un verso,
+        // mentre validation/test usano l'orientamento opposto mai mostrato.
+        std::vector<std::string> canonical;
+        for(size_t i=0;i<symbols.size();++i) for(size_t j=i+1;j<symbols.size();++j){
+            std::string p; p+=symbols[i]; p+=symbols[j]; canonical.push_back(p);
+        }
+        std::mt19937 r(seed); deterministicShuffle(canonical,r);
+
+        for(auto p:canonical){
+            std::string raw=p+">>"+p+"\n";
+            tr.push_back(encode(raw));
+        }
+
+        std::vector<std::string> reversed=canonical;
+        for(auto& p:reversed) std::reverse(p.begin(),p.end());
+        deterministicShuffle(reversed,r);
+        for(size_t i=0;i<reversed.size();++i){
+            std::string out=reversed[i];
+            if(out[0]>out[1]) std::swap(out[0],out[1]);
+            std::string raw=reversed[i]+">>"+out+"\n";
+            if(i<12) tr.push_back(encode(raw));
+            else if(i<24) va.push_back(encode(raw));
             else te.push_back(encode(raw));
         }
     }
