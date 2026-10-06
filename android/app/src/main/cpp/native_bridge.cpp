@@ -34,6 +34,7 @@ Java_it_motorai_seed_MainActivity_nativeEvaluate(JNIEnv* env, jclass) {
     auto te = g_engine.evaluateTest();
     auto r0 = g_engine.evaluateRetentionL0();
     auto r1 = g_engine.evaluateRetentionL1();
+    auto r2 = g_engine.evaluateRetentionL2();
     std::string s = "{\"step\":" + std::to_string(g_engine.globalStep()) +
         ",\"curriculum\":" + std::to_string(g_engine.curriculumLevel()) +
         ",\"parameters\":" + std::to_string(g_engine.parameterCount()) +
@@ -44,7 +45,8 @@ Java_it_motorai_seed_MainActivity_nativeEvaluate(JNIEnv* env, jclass) {
         ",\"test_loss\":" + std::to_string(te.loss) +
         ",\"test_accuracy\":" + std::to_string(te.answer_accuracy) +
         ",\"retention_l0_accuracy\":" + std::to_string(r0.answer_accuracy) +
-        ",\"retention_l1_accuracy\":" + std::to_string(r1.answer_accuracy) + "}";
+        ",\"retention_l1_accuracy\":" + std::to_string(r1.answer_accuracy) +
+        ",\"retention_l2_accuracy\":" + std::to_string(r2.answer_accuracy) + "}";
     return js(env, s);
 }
 
@@ -63,7 +65,8 @@ Java_it_motorai_seed_MainActivity_nativeTrainingEvaluate(JNIEnv* env, jclass) {
         ",\"val_loss\":" + std::to_string(va.loss) +
         ",\"val_accuracy\":" + std::to_string(va.answer_accuracy) +
         ",\"retention_l0_accuracy\":" + std::to_string(r0.answer_accuracy) +
-        ",\"retention_l1_accuracy\":" + std::to_string(r1.answer_accuracy) + "}";
+        ",\"retention_l1_accuracy\":" + std::to_string(r1.answer_accuracy) +
+        ",\"retention_l2_accuracy\":" + std::to_string(r2.answer_accuracy) + "}";
     return js(env, s);
 }
 
@@ -79,7 +82,9 @@ Java_it_motorai_seed_MainActivity_nativeTrainChunk(JNIEnv* env, jclass, jint ste
         ",\"val_accuracy\":" + std::to_string(r.validation.answer_accuracy) +
         ",\"retention_l0_accuracy\":" + std::to_string(r.retention_l0.answer_accuracy) +
         ",\"retention_l1_accuracy\":" + std::to_string(r.retention_l1.answer_accuracy) +
+        ",\"retention_l2_accuracy\":" + std::to_string(r.retention_l2.answer_accuracy) +
         ",\"curriculum\":" + std::to_string(g_engine.curriculumLevel()) +
+        ",\"curriculum_start_step\":" + std::to_string(g_engine.curriculumStartStep()) +
         ",\"paused\":" + std::string(r.paused ? "true" : "false") + "}";
     return js(env, s);
 }
