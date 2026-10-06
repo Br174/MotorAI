@@ -309,6 +309,10 @@ public:
         addParam("ln2.g",{d},false,1); addParam("ln2.b",{d},false,0);
         addParam("fc1.w",{d,ff}); addParam("fc1.b",{ff},false,0); addParam("fc2.w",{ff,d}); addParam("fc2.b",{d},false,0);
         addParam("lnf.g",{d},false,1); addParam("lnf.b",{d},false,0); addHeadParam();
+        // Growth Adapter 1: added after all legacy params so old random weights remain bit-for-bit stable.
+        addParam("grow1.ln.g",{d},false,1); addParam("grow1.ln.b",{d},false,0);
+        addParam("grow1.fc1.w",{d,ff}); addParam("grow1.fc1.b",{ff},false,0);
+        addParam("grow1.fc2.w",{ff,d},false,0); addParam("grow1.fc2.b",{d},false,0);
     }
     int parameterCount() const { int n=0; for(auto&z:p)n+=z.value.size(); return n; }
     void zeroGrad(){ for(auto&z:p) std::fill(z.value.n->grad.begin(),z.value.n->grad.end(),0.0f); }
@@ -329,7 +333,11 @@ public:
         Tensor h=gelu(linear(z2,"fc1.w","fc1.b"));
         Tensor mlp=linear(h,"fc2.w","fc2.b");
         Tensor x2=add(x1,mlp);
-        Tensor zf=layerNorm(x2,P("lnf.g"),P("lnf.b"));
+        Tensor zg=layerNorm(x2,P("grow1.ln.g"),P("grow1.ln.b"));
+        Tensor gh=gelu(linear(zg,"grow1.fc1.w","grow1.fc1.b"));
+        Tensor gd=linear(gh,"grow1.fc2.w","grow1.fc2.b");
+        Tensor xg=add(x2,gd);
+        Tensor zf=layerNorm(xg,P("lnf.g"),P("lnf.b"));
         Tensor logits=matmul(zf,P("head.w"));
         for(int i=0;i<logits.dim(0);++i) logits.n->data[i*vocab+11]=-1e9f;
         return logits;
@@ -337,11 +345,27 @@ public:
     Tensor loss(const std::vector<int>& x,const std::vector<int>& y){ return crossEntropy(forward(x),y); }
     Tensor lossRange(const std::vector<int>& x,const std::vector<int>& y,int start,int count){ return crossEntropyRange(forward(x),y,start,count); }
 
-    void adamStep(float lr,int batch,int step){
-        double sq=0; for(auto&z:p)for(float g:z.value.n->grad){ float gg=g/batch; sq+=double(gg)*gg; }
+    bool updateIndex(const Param& z,size_t i,int curriculum) const {
+        bool growth=z.name.rfind("grow1.",0)==0;
+        if(curriculum<4) return !growth;
+        if(growth) return true;
+        if(z.name=="token" && i>=static_cast<size_t>(11*d)) return true; // solo embedding del token ?
+        return false;
+    }
+    void adamStep(float lr,int batch,int step,int curriculum){
+        double sq=0;
+        for(auto&z:p) for(size_t i=0;i<z.value.n->grad.size();++i) if(updateIndex(z,i,curriculum)){
+            float gg=z.value.n->grad[i]/batch; sq+=double(gg)*gg;
+        }
         float norm=std::sqrt((float)sq), clip=norm>1.0f?1.0f/(norm+1e-8f):1.0f;
         const float b1=.9f,b2=.999f,eps=1e-8f; float bc1=1-std::pow(b1,(float)step),bc2=1-std::pow(b2,(float)step);
-        for(auto&z:p) for(size_t i=0;i<z.value.n->data.size();++i){ float g=z.value.n->grad[i]/batch*clip; z.m[i]=b1*z.m[i]+(1-b1)*g; z.v[i]=b2*z.v[i]+(1-b2)*g*g; float mh=z.m[i]/bc1,vh=z.v[i]/bc2; z.value.n->data[i]-=lr*mh/(std::sqrt(vh)+eps); }
+        for(auto&z:p) for(size_t i=0;i<z.value.n->data.size();++i){
+            if(!updateIndex(z,i,curriculum)) continue;
+            float g=z.value.n->grad[i]/batch*clip;
+            z.m[i]=b1*z.m[i]+(1-b1)*g; z.v[i]=b2*z.v[i]+(1-b2)*g*g;
+            float mh=z.m[i]/bc1,vh=z.v[i]/bc2;
+            z.value.n->data[i]-=lr*mh/(std::sqrt(vh)+eps);
+        }
     }
 };
 
@@ -529,7 +553,7 @@ TrainResult Engine::train(int steps,int batch,float lr){
     auto t0=std::chrono::steady_clock::now();
     std::mt19937 r(impl_->seed+1+impl_->step);
     int done=0;
-    float effective_lr=(impl_->curriculum>=4)?lr*0.50f:((impl_->curriculum>=3)?lr*0.65f:((impl_->curriculum>=2)?lr*0.75f:lr));
+    float effective_lr=(impl_->curriculum>=4)?lr:((impl_->curriculum>=3)?lr*0.65f:((impl_->curriculum>=2)?lr*0.75f:lr));
 
     for(int s=0;s<steps;++s){
         if(impl_->pause.load()) break;
@@ -553,11 +577,11 @@ TrainResult Engine::train(int steps,int batch,float lr){
                 else if(b < 20) idx=120+deterministicIndex(r,48);
                 else idx=168+deterministicIndex(r,72);
             }else if(impl_->curriculum>=4 && impl_->data.train.size()>=288){
-                // L4 10/24; replay L3/L2/L1 = 3/24 ciascuno; L0 rinforzato = 5/24.
-                if(b < 10) idx=deterministicIndex(r,72);
-                else if(b < 13) idx=72+deterministicIndex(r,48);
-                else if(b < 16) idx=120+deterministicIndex(r,48);
-                else if(b < 19) idx=168+deterministicIndex(r,48);
+                // Con il vecchio cervello congelato: 50% L4, 12.5% per ciascun livello precedente.
+                if(b < 12) idx=deterministicIndex(r,72);
+                else if(b < 15) idx=72+deterministicIndex(r,48);
+                else if(b < 18) idx=120+deterministicIndex(r,48);
+                else if(b < 21) idx=168+deterministicIndex(r,48);
                 else idx=216+deterministicIndex(r,72);
             }else{
                 idx=deterministicIndex(r,impl_->data.train.size());
@@ -571,7 +595,7 @@ TrainResult Engine::train(int steps,int batch,float lr){
         }
 
         ++impl_->step;
-        impl_->model.adamStep(effective_lr,batch,impl_->step);
+        impl_->model.adamStep(effective_lr,batch,impl_->step,impl_->curriculum);
         ++done;
     }
 
