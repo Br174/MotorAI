@@ -313,6 +313,13 @@ public:
         addParam("grow1.ln.g",{d},false,1); addParam("grow1.ln.b",{d},false,0);
         addParam("grow1.fc1.w",{d,ff}); addParam("grow1.fc1.b",{ff},false,0);
         addParam("grow1.fc2.w",{ff,d},false,0); addParam("grow1.fc2.b",{d},false,0);
+
+        // Growth Adapter 2: attenzione relazionale. O-projection a zero = effetto iniziale esattamente nullo.
+        addParam("grow2.ln.g",{d},false,1); addParam("grow2.ln.b",{d},false,0);
+        addParam("grow2.q.w",{d,d}); addParam("grow2.q.b",{d},false,0);
+        addParam("grow2.k.w",{d,d}); addParam("grow2.k.b",{d},false,0);
+        addParam("grow2.v.w",{d,d}); addParam("grow2.v.b",{d},false,0);
+        addParam("grow2.o.w",{d,d},false,0); addParam("grow2.o.b",{d},false,0);
     }
     int parameterCount() const { int n=0; for(auto&z:p)n+=z.value.size(); return n; }
     void zeroGrad(){ for(auto&z:p) std::fill(z.value.n->grad.begin(),z.value.n->grad.end(),0.0f); }
@@ -333,10 +340,21 @@ public:
         Tensor h=gelu(linear(z2,"fc1.w","fc1.b"));
         Tensor mlp=linear(h,"fc2.w","fc2.b");
         Tensor x2=add(x1,mlp);
-        Tensor zg=layerNorm(x2,P("grow1.ln.g"),P("grow1.ln.b"));
+
+        Tensor za=layerNorm(x2,P("grow2.ln.g"),P("grow2.ln.b"));
+        Tensor gq=linear(za,"grow2.q.w","grow2.q.b");
+        Tensor gk=linear(za,"grow2.k.w","grow2.k.b");
+        Tensor gv=linear(za,"grow2.v.w","grow2.v.b");
+        Tensor gscores=scale(matmul(gq,transpose2(gk)),1.0f/std::sqrt((float)d));
+        Tensor gatt=softmaxRows(causalMask(gscores));
+        Tensor gy=matmul(gatt,gv);
+        Tensor gproj=linear(gy,"grow2.o.w","grow2.o.b");
+        Tensor xa=add(x2,gproj);
+
+        Tensor zg=layerNorm(xa,P("grow1.ln.g"),P("grow1.ln.b"));
         Tensor gh=gelu(linear(zg,"grow1.fc1.w","grow1.fc1.b"));
         Tensor gd=linear(gh,"grow1.fc2.w","grow1.fc2.b");
-        Tensor xg=add(x2,gd);
+        Tensor xg=add(xa,gd);
         Tensor zf=layerNorm(xg,P("lnf.g"),P("lnf.b"));
         Tensor logits=matmul(zf,P("head.w"));
         bool control=!ids.empty() && ids[0]==11;
@@ -357,7 +375,7 @@ public:
     Tensor lossRange(const std::vector<int>& x,const std::vector<int>& y,int start,int count){ return crossEntropyRange(forward(x),y,start,count); }
 
     float updateScale(const Param& z,size_t i,int curriculum) const {
-        bool growth=z.name.rfind("grow1.",0)==0;
+        bool growth=z.name.rfind("grow",0)==0;
         if(curriculum<4) return growth ? 0.0f : 1.0f;
         if(growth) return 1.0f;
         if(z.name=="token" && i>=static_cast<size_t>(11*d)) return 1.0f;
