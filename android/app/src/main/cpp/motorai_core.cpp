@@ -386,15 +386,15 @@ struct Dataset {
         }
     }
 
-    static void buildMarkedMin(uint32_t seed,std::vector<Example>&tr,std::vector<Example>&va,std::vector<Example>&te){
+    static void buildMarkedCompare(uint32_t seed,std::vector<Example>&tr,std::vector<Example>&va,std::vector<Example>&te){
         std::vector<std::string> pairs; std::string symbols="abcdefghi";
         for(char a:symbols)for(char b:symbols)if(a!=b){
             std::string p; p+=a; p+=b; pairs.push_back(p);
         }
         std::mt19937 r(seed); deterministicShuffle(pairs,r);
         for(size_t i=0;i<pairs.size();++i){
-            char mn=std::min(pairs[i][0],pairs[i][1]);
-            std::string out(1,mn);
+            char label=(pairs[i][0] < pairs[i][1]) ? 'a' : 'b';
+            std::string out(1,label);
             std::string raw="d"+pairs[i]+">"+out+"\n";
             if(i<48) tr.push_back(encode(raw));
             else if(i<60) va.push_back(encode(raw));
@@ -411,7 +411,7 @@ struct Dataset {
         buildPairs(seed+1009,1,l1tr,l1va,l1te);
         buildPairs(seed+2027,2,l2tr,l2va,l2te);
         buildPairs(seed+3037,3,l3tr,l3va,l3te);
-        buildMarkedMin(seed+4051,l4tr,l4va,l4te);
+        buildMarkedCompare(seed+4051,l4tr,l4va,l4te);
 
         retention_l0=l0te;
         retention_l1=l1te;
@@ -449,7 +449,7 @@ struct Dataset {
             return;
         }
 
-        // Livello 4: marker "d" + selezione del simbolo minore.
+        // Livello 4: marker "d" + classificazione binaria del confronto (a=primo<secondo, b=altrimenti).
         // Layout: L4(72), L3(48), L2(48), L1(48), L0(72).
         train=l4tr; val=l4va; test=l4te;
         for(size_t i=0;i<24 && i<l4tr.size();++i) train.push_back(l4tr[i]);
@@ -509,7 +509,7 @@ TrainResult Engine::train(int steps,int batch,float lr){
     auto t0=std::chrono::steady_clock::now();
     std::mt19937 r(impl_->seed+1+impl_->step);
     int done=0;
-    float effective_lr=(impl_->curriculum>=4)?lr*0.45f:((impl_->curriculum>=3)?lr*0.65f:((impl_->curriculum>=2)?lr*0.75f:lr));
+    float effective_lr=(impl_->curriculum>=4)?lr*0.50f:((impl_->curriculum>=3)?lr*0.65f:((impl_->curriculum>=2)?lr*0.75f:lr));
 
     for(int s=0;s<steps;++s){
         if(impl_->pause.load()) break;
