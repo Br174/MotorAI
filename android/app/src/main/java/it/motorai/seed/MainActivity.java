@@ -5,6 +5,7 @@ import android.app.ActivityManager;
 import android.content.Context;
 import android.content.Intent;
 import android.content.IntentFilter;
+import android.content.SharedPreferences;
 import android.graphics.Typeface;
 import android.os.BatteryManager;
 import android.os.Bundle;
@@ -36,6 +37,7 @@ public class MainActivity extends Activity {
     private TextView metrics;
     private TextView device;
     private TextView state;
+    private TextView answer;
     private EditText prompt;
     private Button learn;
     private Button pause;
@@ -64,7 +66,7 @@ public class MainActivity extends Activity {
 
     @Override protected void onCreate(Bundle stateBundle) {
         super.onCreate(stateBundle);
-        setTitle("MotorAI Seed 004");
+        setTitle("MotorAI Seed 005");
 
         ScrollView scroll = new ScrollView(this);
         LinearLayout root = new LinearLayout(this);
@@ -72,7 +74,7 @@ public class MainActivity extends Activity {
         root.setPadding(20, 34, 20, 30);
         scroll.addView(root);
 
-        root.addView(text("MotorAI Seed 004", 28, true));
+        root.addView(text("MotorAI Seed 005", 28, true));
         root.addView(text("Cervello: Transformer causale nativo C++ · pesi iniziali casuali · nessun modello preaddestrato", 15, false));
         root.addView(text("Benchmark corrente: copy3 con TRAIN / VALIDATION / TEST separati", 14, false));
 
@@ -107,6 +109,18 @@ public class MainActivity extends Activity {
         Button talk = button("💬 Genera");
         root.addView(talk);
 
+        answer = text("Risposta MotorAI: —", 16, true);
+        answer.setPadding(22, 18, 22, 24);
+        root.addView(answer);
+
+        SharedPreferences uiPrefs = getSharedPreferences("motorai_ui", MODE_PRIVATE);
+        String savedPrompt = uiPrefs.getString("last_prompt", "abc>");
+        String savedAnswer = uiPrefs.getString("last_answer", "");
+        prompt.setText(savedPrompt);
+        if (!savedAnswer.isEmpty()) {
+            answer.setText("Risposta MotorAI:\n" + savedAnswer.replace("\n", "↵\n"));
+        }
+
         Button reset = button("↺ Riparti da pesi casuali");
         root.addView(reset);
 
@@ -117,17 +131,47 @@ public class MainActivity extends Activity {
             ui(() -> state.setText(ok ? "Stato: checkpoint salvato" : "Stato: errore checkpoint"));
         }));
         test.setOnClickListener(v -> refreshMetrics());
-        talk.setOnClickListener(v -> runAsync(() -> {
-            String out = nativeGenerate(prompt.getText().toString());
-            ui(() -> state.setText("MotorAI: " + out.replace("\n", "↵")));
-        }));
+        talk.setOnClickListener(v -> {
+            // Leggere la UI sul main thread; il core nativo lavora poi in background.
+            final String input = prompt.getText().toString();
+            uiPrefs.edit().putString("last_prompt", input).apply();
+            talk.setEnabled(false);
+            answer.setText("Risposta MotorAI: generazione…");
+            runAsync(() -> {
+                try {
+                    String out = nativeGenerate(input);
+                    if (out == null || out.isEmpty()) out = "[nessun output]";
+                    final String result = out;
+                    uiPrefs.edit().putString("last_answer", result).apply();
+                    ui(() -> {
+                        answer.setText("Risposta MotorAI:\n" + result.replace("\n", "↵\n"));
+                        state.setText("Stato: generazione completata");
+                        talk.setEnabled(true);
+                    });
+                } catch (Throwable e) {
+                    final String err = e.getClass().getSimpleName() + ": " +
+                            (e.getMessage() == null ? "errore senza dettaglio" : e.getMessage());
+                    uiPrefs.edit().putString("last_answer", "[errore] " + err).apply();
+                    ui(() -> {
+                        answer.setText("Risposta MotorAI:\n[errore] " + err);
+                        state.setText("Stato: errore durante Genera");
+                        talk.setEnabled(true);
+                    });
+                }
+            });
+        });
         reset.setOnClickListener(v -> {
             stopTraining("Reset");
             runAsync(() -> {
                 nativeReset();
                 deleteTree(currentCheckpoint());
                 deleteTree(previousCheckpoint());
-                ui(() -> { state.setText("Stato: nuovi pesi casuali inizializzati"); refreshMetrics(); });
+                getSharedPreferences("motorai_ui", MODE_PRIVATE).edit().remove("last_answer").apply();
+                ui(() -> {
+                    answer.setText("Risposta MotorAI: —");
+                    state.setText("Stato: nuovi pesi casuali inizializzati");
+                    refreshMetrics();
+                });
             });
         });
 
@@ -135,7 +179,7 @@ public class MainActivity extends Activity {
 
         runAsync(() -> {
             boolean resumed = currentCheckpoint().exists() && nativeLoadCheckpoint(currentCheckpoint().getAbsolutePath());
-            ui(() -> state.setText(resumed ? "Stato: checkpoint ripreso automaticamente" : "Stato: Seed 004 pronta da pesi casuali"));
+            ui(() -> state.setText(resumed ? "Stato: checkpoint ripreso automaticamente" : "Stato: Seed 005 pronta da pesi casuali"));
             refreshMetrics();
         });
     }
@@ -192,7 +236,7 @@ public class MainActivity extends Activity {
                     if (j.optInt("step", 0) >= 220) {
                         training.set(false);
                         ui(() -> {
-                            state.setText("Stato: benchmark Seed 004 completato · checkpoint salvato");
+                            state.setText("Stato: benchmark Seed 005 completato · checkpoint salvato");
                             refreshMetrics();
                         });
                     }
