@@ -80,8 +80,8 @@ public class MainActivity extends Activity {
 
         root.addView(text("MotorAI Seed 010", 28, true));
         root.addView(text("Cervello: Transformer causale nativo C++ · pesi iniziali casuali · nessun modello preaddestrato", 15, false));
-        root.addView(text("Curriculum: L0 copia3 → L1 inversione → L2 duplica primo → L3 duplica secondo → L4 confronto", 14, false));
-        root.addView(text("L4: ? + coppia + > = confronto (+ se primo<secondo, - altrimenti). Esempio: ?ef> → ?ef>+. Crescita: adapter residuale locale.", 14, false));
+        root.addView(text("Curriculum: L0 copia3 → L1 inversione → L2 duplica primo → L3 duplica secondo → L4 uguaglianza", 14, false));
+        root.addView(text("L4: ? + tre simboli + > = uguaglianza strutturale (+ se primo=terzo, - se diversi). Esempio: ?efe> → ?efe>+. Adapter residuale locale.", 14, false));
 
         state = text("Stato: inizializzazione…", 16, true);
         curriculum = text("Livello: —", 15, true);
@@ -110,7 +110,7 @@ public class MainActivity extends Activity {
 
         root.addView(text("Prova MotorAI", 18, true));
         prompt = new EditText(this);
-        prompt.setHint("Esempi: abc> · ef> · ef>> · ef>>> · ?ef>");
+        prompt.setHint("Esempi: abc> · ef> · ef>> · ef>>> · ?efe>");
         prompt.setText("abc>");
         root.addView(prompt);
         Button talk = button("💬 Genera");
@@ -373,7 +373,7 @@ public class MainActivity extends Activity {
         final String levelText = level <= 0 ? "Livello 0 · copy3" :
                 (level == 1 ? "Livello 1 · inversione" :
                 (level == 2 ? "Livello 2 · duplica primo" :
-                (level == 3 ? "Livello 3 · duplica secondo" : "Livello 4 · confronto")));
+                (level == 3 ? "Livello 3 · duplica secondo" : "Livello 4 · uguaglianza")));
         ui(() -> curriculum.setText("Livello: " + levelText));
 
         if (level <= 0) {
@@ -434,7 +434,7 @@ public class MainActivity extends Activity {
         final String levelText = level <= 0 ? "Livello 0 · copy3" :
                 (level == 1 ? "Livello 1 · inversione" :
                 (level == 2 ? "Livello 2 · duplica primo" :
-                (level == 3 ? "Livello 3 · duplica secondo" : "Livello 4 · confronto")));
+                (level == 3 ? "Livello 3 · duplica secondo" : "Livello 4 · uguaglianza")));
         ui(() -> curriculum.setText("Livello: " + levelText));
         if (level <= 0) {
             return String.format(Locale.ITALY, "Passi: %d · Parametri: %,d · Test loss: %.4f · Generalizzazione: %.1f%%", step, params, loss, acc * 100.0);
