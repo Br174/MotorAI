@@ -234,6 +234,34 @@ Tensor crossEntropy(const Tensor& logits,const std::vector<int>& targets) {
     return y;
 }
 
+Tensor crossEntropyRange(const Tensor& logits,const std::vector<int>& targets,int start,int count) {
+    if(logits.n->shape.size()!=2||logits.dim(0)!=(int)targets.size()) throw std::runtime_error("cross entropy range shape mismatch");
+    int t=logits.dim(0),v=logits.dim(1);
+    start=std::max(0,start); count=std::max(1,count);
+    int stop=std::min(t,start+count);
+    if(start>=stop) throw std::runtime_error("empty loss range");
+    float loss=0; std::vector<float> probs(logits.size(),0.0f);
+    for(int i=start;i<stop;++i){
+        float mx=-std::numeric_limits<float>::infinity();
+        for(int j=0;j<v;++j) mx=std::max(mx,logits.n->data[i*v+j]);
+        float sum=0;
+        for(int j=0;j<v;++j){ probs[i*v+j]=std::exp(logits.n->data[i*v+j]-mx); sum+=probs[i*v+j]; }
+        for(int j=0;j<v;++j) probs[i*v+j]/=sum;
+        loss-=std::log(std::max(probs[i*v+targets[i]],1e-12f));
+    }
+    int npos=stop-start; loss/=npos;
+    Tensor y=tensor({1},{loss},logits.n->requires_grad); y.n->parents={logits.n};
+    y.n->backward=[pl=logits.n,py=y.n.get(),probs=std::move(probs),targets,start,stop,v,npos]{
+        if(!pl->requires_grad)return;
+        float g=py->grad[0]/npos;
+        for(int i=start;i<stop;++i) for(int j=0;j<v;++j){
+            float d=probs[i*v+j]-(j==targets[i]?1.0f:0.0f);
+            pl->grad[i*v+j]+=g*d;
+        }
+    };
+    return y;
+}
+
 struct Param {
     std::string name;
     Tensor value;
@@ -287,6 +315,7 @@ public:
         return matmul(zf,P("head.w"));
     }
     Tensor loss(const std::vector<int>& x,const std::vector<int>& y){ return crossEntropy(forward(x),y); }
+    Tensor lossRange(const std::vector<int>& x,const std::vector<int>& y,int start,int count){ return crossEntropyRange(forward(x),y,start,count); }
 
     void adamStep(float lr,int batch,int step){
         double sq=0; for(auto&z:p)for(float g:z.value.n->grad){ float gg=g/batch; sq+=double(gg)*gg; }
@@ -405,7 +434,7 @@ void Engine::requestPause(){impl_->pause.store(true);} void Engine::clearPause()
 TrainResult Engine::train(int steps,int batch,float lr){
     std::lock_guard<std::mutex> guard(impl_->mu);
     clearPause(); auto t0=std::chrono::steady_clock::now(); std::mt19937 r(impl_->seed+1+impl_->step); int done=0;
-    for(int s=0;s<steps;++s){ if(impl_->pause.load())break; impl_->model.zeroGrad(); for(int b=0;b<batch;++b){auto&e=impl_->data.train[deterministicIndex(r, impl_->data.train.size())]; Tensor L=impl_->model.loss(e.x,e.y); backward(L);} ++impl_->step; impl_->model.adamStep(lr,batch,impl_->step); ++done; }
+    for(int s=0;s<steps;++s){ if(impl_->pause.load())break; impl_->model.zeroGrad(); for(int b=0;b<batch;++b){auto&e=impl_->data.train[deterministicIndex(r, impl_->data.train.size())]; Tensor L=(impl_->curriculum<=0)?impl_->model.loss(e.x,e.y):impl_->model.lossRange(e.x,e.y,e.answer_start,e.answer_len+1); backward(L);} ++impl_->step; impl_->model.adamStep(lr,batch,impl_->step); ++done; }
     auto t1=std::chrono::steady_clock::now(); TrainResult tr; tr.steps_completed=done; tr.train=eval(impl_->model,impl_->data.train); tr.validation=eval(impl_->model,impl_->data.val); tr.test=eval(impl_->model,impl_->data.test); tr.retention=eval(impl_->model,impl_->data.retention); tr.elapsed_seconds=std::chrono::duration<double>(t1-t0).count(); tr.paused=impl_->pause.load(); return tr;
 }
 
