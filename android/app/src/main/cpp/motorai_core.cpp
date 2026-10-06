@@ -270,11 +270,12 @@ struct Param {
 
 class TinyTransformer {
 public:
-    int vocab=11, context=7, d=32, ff=64;
+    int vocab=12, context=7, d=32, ff=64;
     std::vector<Param> p;
     std::mt19937 rng;
+    std::mt19937 extra_rng;
 
-    explicit TinyTransformer(uint32_t seed):rng(seed){ init(); }
+    explicit TinyTransformer(uint32_t seed):rng(seed),extra_rng(seed ^ 0xA17E5EEDu){ init(); }
 
     Tensor& P(const std::string& name){ for(auto& z:p)if(z.name==name)return z.value; throw std::runtime_error("missing param "+name); }
     const Tensor& P(const std::string& name) const { for(auto& z:p)if(z.name==name)return z.value; throw std::runtime_error("missing param "+name); }
@@ -284,13 +285,30 @@ public:
         if(normal){ for(float&x:data)x=0.02f*deterministicNormalApprox(rng);} else std::fill(data.begin(),data.end(),fill);
         Tensor t=tensor(shape,std::move(data),true); p.push_back({name,t,std::vector<float>(t.size(),0),std::vector<float>(t.size(),0)});
     }
+    void addTokenParam(){
+        std::vector<float> data(vocab*d,0.0f);
+        // Gli 11 token storici consumano esattamente lo stesso stream RNG della Seed009.
+        for(int i=0;i<11*d;++i) data[i]=0.02f*deterministicNormalApprox(rng);
+        for(int j=0;j<d;++j) data[11*d+j]=0.02f*deterministicNormalApprox(extra_rng);
+        Tensor t=tensor({vocab,d},std::move(data),true);
+        p.push_back({"token",t,std::vector<float>(t.size(),0),std::vector<float>(t.size(),0)});
+    }
+    void addHeadParam(){
+        std::vector<float> data(d*vocab,0.0f);
+        for(int i=0;i<d;++i){
+            for(int j=0;j<11;++j) data[i*vocab+j]=0.02f*deterministicNormalApprox(rng);
+            data[i*vocab+11]=0.0f; // token comando non deve mai essere una risposta.
+        }
+        Tensor t=tensor({d,vocab},std::move(data),true);
+        p.push_back({"head.w",t,std::vector<float>(t.size(),0),std::vector<float>(t.size(),0)});
+    }
     void init(){
-        p.clear(); addParam("token",{vocab,d}); addParam("pos",{context,d});
+        p.clear(); addTokenParam(); addParam("pos",{context,d});
         addParam("ln1.g",{d},false,1); addParam("ln1.b",{d},false,0);
         addParam("q.w",{d,d}); addParam("q.b",{d},false,0); addParam("k.w",{d,d}); addParam("k.b",{d},false,0); addParam("v.w",{d,d}); addParam("v.b",{d},false,0); addParam("o.w",{d,d}); addParam("o.b",{d},false,0);
         addParam("ln2.g",{d},false,1); addParam("ln2.b",{d},false,0);
         addParam("fc1.w",{d,ff}); addParam("fc1.b",{ff},false,0); addParam("fc2.w",{ff,d}); addParam("fc2.b",{d},false,0);
-        addParam("lnf.g",{d},false,1); addParam("lnf.b",{d},false,0); addParam("head.w",{d,vocab});
+        addParam("lnf.g",{d},false,1); addParam("lnf.b",{d},false,0); addHeadParam();
     }
     int parameterCount() const { int n=0; for(auto&z:p)n+=z.value.size(); return n; }
     void zeroGrad(){ for(auto&z:p) std::fill(z.value.n->grad.begin(),z.value.n->grad.end(),0.0f); }
@@ -312,7 +330,9 @@ public:
         Tensor mlp=linear(h,"fc2.w","fc2.b");
         Tensor x2=add(x1,mlp);
         Tensor zf=layerNorm(x2,P("lnf.g"),P("lnf.b"));
-        return matmul(zf,P("head.w"));
+        Tensor logits=matmul(zf,P("head.w"));
+        for(int i=0;i<logits.dim(0);++i) logits.n->data[i*vocab+11]=-1e9f;
+        return logits;
     }
     Tensor loss(const std::vector<int>& x,const std::vector<int>& y){ return crossEntropy(forward(x),y); }
     Tensor lossRange(const std::vector<int>& x,const std::vector<int>& y,int start,int count){ return crossEntropyRange(forward(x),y,start,count); }
@@ -335,8 +355,8 @@ struct Example {
 struct Dataset {
     std::vector<Example> train,val,test,retention_l0,retention_l1,retention_l2,retention_l3;
 
-    static int id(char c){ if(c=='\n')return 0; if(c=='>')return 1; if(c>='a'&&c<='i')return 2+(c-'a'); return -1; }
-    static char ch(int id){ if(id==0)return '\n'; if(id==1)return '>'; if(id>=2&&id<=10)return char('a'+id-2); return '?'; }
+    static int id(char c){ if(c=='\n')return 0; if(c=='>')return 1; if(c>='a'&&c<='i')return 2+(c-'a'); if(c=='?')return 11; return -1; }
+    static char ch(int id){ if(id==0)return '\n'; if(id==1)return '>'; if(id>=2&&id<=10)return char('a'+id-2); if(id==11)return '?'; return '?'; }
 
     static Example encode(const std::string&s){
         std::vector<int>a;
@@ -395,7 +415,7 @@ struct Dataset {
         for(size_t i=0;i<pairs.size();++i){
             char label=(pairs[i][0] < pairs[i][1]) ? 'a' : 'b';
             std::string out(1,label);
-            std::string raw="d"+pairs[i]+">"+out+"\n";
+            std::string raw="?"+pairs[i]+">"+out+"\n";
             if(i<48) tr.push_back(encode(raw));
             else if(i<60) va.push_back(encode(raw));
             else te.push_back(encode(raw));
@@ -449,7 +469,7 @@ struct Dataset {
             return;
         }
 
-        // Livello 4: marker "d" + classificazione binaria del confronto (a=primo<secondo, b=altrimenti).
+        // Livello 4: token comando "?" + classificazione binaria (a=primo<secondo, b=altrimenti).
         // Layout: L4(72), L3(48), L2(48), L1(48), L0(72).
         train=l4tr; val=l4va; test=l4te;
         for(size_t i=0;i<24 && i<l4tr.size();++i) train.push_back(l4tr[i]);
@@ -583,8 +603,8 @@ bool Engine::saveCheckpoint(const std::string&dir) const{
     try{
         std::filesystem::create_directories(dir);
         std::ofstream w(dir+"/weights.bin",std::ios::binary); if(!w)return false;
-        const char magic[8]={'M','O','T','A','I','0','0','9'}; w.write(magic,8);
-        uint32_t ver=3,seed=impl_->seed,step=impl_->step,level=impl_->curriculum,start_step=impl_->curriculum_start_step,pc=impl_->model.p.size();
+        const char magic[8]={'M','O','T','A','I','0','1','0'}; w.write(magic,8);
+        uint32_t ver=4,seed=impl_->seed,step=impl_->step,level=impl_->curriculum,start_step=impl_->curriculum_start_step,pc=impl_->model.p.size();
         w.write((char*)&ver,4); w.write((char*)&seed,4); w.write((char*)&step,4); w.write((char*)&level,4); w.write((char*)&start_step,4); w.write((char*)&pc,4);
         for(auto&z:impl_->model.p){
             uint32_t nl=z.name.size(),sz=z.value.n->data.size();
@@ -628,14 +648,34 @@ bool Engine::loadCheckpoint(const std::string&dir){
             start_step=(level<=0)?0:((level==1)?220:620);
         }else if(m=="MOTAI008" || m=="MOTAI009"){
             w.read((char*)&ver,4); w.read((char*)&seed,4); w.read((char*)&step,4); w.read((char*)&level,4); w.read((char*)&start_step,4); w.read((char*)&pc,4);
-            if(ver!=3 || level>4 || start_step>step) return false;
+            if(ver!=3 || level>3 || start_step>step) return false;
+        }else if(m=="MOTAI010"){
+            w.read((char*)&ver,4); w.read((char*)&seed,4); w.read((char*)&step,4); w.read((char*)&level,4); w.read((char*)&start_step,4); w.read((char*)&pc,4);
+            if(ver!=4 || level>4 || start_step>step) return false;
         }else return false;
-        if(pc!=impl_->model.p.size())return false;
-        for(auto&z:impl_->model.p){
-            uint32_t nl,sz; w.read((char*)&nl,4); std::string name(nl,' '); w.read(name.data(),nl); w.read((char*)&sz,4);
-            if(name!=z.name||sz!=z.value.n->data.size())return false;
-            w.read((char*)z.value.n->data.data(),sz*sizeof(float));
-            w.read((char*)z.m.data(),sz*sizeof(float)); w.read((char*)z.v.data(),sz*sizeof(float));
+
+        // Migrazione per vocabolario 11 -> 12: carica per nome e conserva il nuovo token ? inizializzato localmente.
+        for(uint32_t k=0;k<pc;++k){
+            uint32_t nl=0,sz=0; w.read((char*)&nl,4);
+            std::string name(nl,' '); w.read(name.data(),nl); w.read((char*)&sz,4);
+            std::vector<float> data(sz),mm(sz),vv(sz);
+            w.read((char*)data.data(),sz*sizeof(float));
+            w.read((char*)mm.data(),sz*sizeof(float));
+            w.read((char*)vv.data(),sz*sizeof(float));
+            auto it=std::find_if(impl_->model.p.begin(),impl_->model.p.end(),[&](const Param& z){return z.name==name;});
+            if(it==impl_->model.p.end()) return false;
+            size_t target=it->value.n->data.size();
+            if(target==sz){
+                it->value.n->data=data; it->m=mm; it->v=vv;
+            }else if(name=="token" && sz==11u*32u && target==12u*32u){
+                for(size_t i=0;i<sz;++i){it->value.n->data[i]=data[i];it->m[i]=mm[i];it->v[i]=vv[i];}
+            }else if(name=="head.w" && sz==32u*11u && target==32u*12u){
+                for(size_t row=0;row<32;++row) for(size_t col=0;col<11;++col){
+                    size_t src=row*11+col,dst=row*12+col;
+                    it->value.n->data[dst]=data[src]; it->m[dst]=mm[src]; it->v[dst]=vv[src];
+                }
+                for(size_t row=0;row<32;++row) it->value.n->data[row*12+11]=0.0f;
+            }else return false;
         }
         if(!w)return false;
         impl_->seed=seed; impl_->curriculum=static_cast<int>(level); impl_->curriculum_start_step=static_cast<int>(start_step); impl_->data=Dataset(seed,impl_->curriculum); impl_->step=step;
