@@ -352,14 +352,14 @@ struct Dataset {
         for(char a:symbols)for(char b:symbols)if(a!=b){ std::string p; p+=a; p+=b; pairs.push_back(p); }
         std::mt19937 r(seed+1009); deterministicShuffle(pairs,r);
 
-        const char tasks[3]={'a','b','c'};
+        const char tasks[2]={'a','b'};
         for(size_t i=0;i<pairs.size();++i){
             auto& target = (i<18) ? train : ((i<24) ? val : test);
             for(char task:tasks) target.push_back(encode(level1Raw(task,pairs[i])));
         }
 
         // Replay controllato del Livello 0 per ridurre il catastrophic forgetting.
-        for(size_t i=0;i<54 && i<baseTrain.size();++i) train.push_back(baseTrain[i]);
+        for(size_t i=0;i<36 && i<baseTrain.size();++i) train.push_back(baseTrain[i]);
     }
 };
 
