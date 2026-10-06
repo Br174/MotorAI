@@ -6,6 +6,7 @@ on:
     branches: ["main", "lab/**"]
     paths:
       - "android/**"
+      - "tools/**"
       - ".github/workflows/build-android-debug.yml"
 
 permissions:
@@ -64,3 +65,5 @@ jobs:
 # Seed004 final validation trigger
 
 # Seed005 generate-UI validation trigger
+
+# Seed006 final curriculum validation trigger
