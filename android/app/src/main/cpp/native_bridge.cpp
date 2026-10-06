@@ -48,6 +48,25 @@ Java_it_motorai_seed_MainActivity_nativeEvaluate(JNIEnv* env, jclass) {
     return js(env, s);
 }
 
+
+extern "C" JNIEXPORT jstring JNICALL
+Java_it_motorai_seed_MainActivity_nativeTrainingEvaluate(JNIEnv* env, jclass) {
+    std::lock_guard<std::mutex> g(g_engine_call_mu);
+    auto tr = g_engine.evaluateTrain();
+    auto va = g_engine.evaluateValidation();
+    auto r0 = g_engine.evaluateRetentionL0();
+    auto r1 = g_engine.evaluateRetentionL1();
+    std::string s = "{\"step\":" + std::to_string(g_engine.globalStep()) +
+        ",\"curriculum\":" + std::to_string(g_engine.curriculumLevel()) +
+        ",\"parameters\":" + std::to_string(g_engine.parameterCount()) +
+        ",\"train_loss\":" + std::to_string(tr.loss) +
+        ",\"val_loss\":" + std::to_string(va.loss) +
+        ",\"val_accuracy\":" + std::to_string(va.answer_accuracy) +
+        ",\"retention_l0_accuracy\":" + std::to_string(r0.answer_accuracy) +
+        ",\"retention_l1_accuracy\":" + std::to_string(r1.answer_accuracy) + "}";
+    return js(env, s);
+}
+
 extern "C" JNIEXPORT jstring JNICALL
 Java_it_motorai_seed_MainActivity_nativeTrainChunk(JNIEnv* env, jclass, jint steps) {
     std::lock_guard<std::mutex> g(g_engine_call_mu);
@@ -58,8 +77,6 @@ Java_it_motorai_seed_MainActivity_nativeTrainChunk(JNIEnv* env, jclass, jint ste
         ",\"train_loss\":" + std::to_string(r.train.loss) +
         ",\"val_loss\":" + std::to_string(r.validation.loss) +
         ",\"val_accuracy\":" + std::to_string(r.validation.answer_accuracy) +
-        ",\"test_loss\":" + std::to_string(r.test.loss) +
-        ",\"test_accuracy\":" + std::to_string(r.test.answer_accuracy) +
         ",\"retention_l0_accuracy\":" + std::to_string(r.retention_l0.answer_accuracy) +
         ",\"retention_l1_accuracy\":" + std::to_string(r.retention_l1.answer_accuracy) +
         ",\"curriculum\":" + std::to_string(g_engine.curriculumLevel()) +
