@@ -377,18 +377,21 @@ struct Dataset {
         }
 
         retention=baseTest;
-        std::vector<std::string> pairs; std::string symbols="defghi";
+        std::vector<std::string> pairs; std::string symbols="abcdefghi";
         for(char a:symbols)for(char b:symbols)if(a!=b){ std::string p; p+=a; p+=b; pairs.push_back(p); }
         std::mt19937 r(seed+1009); deterministicShuffle(pairs,r);
 
-        const char tasks[2]={'a','b'};
+        // Livello 1: una sola nuova regola. Due simboli entrano, gli stessi due escono invertiti.
         for(size_t i=0;i<pairs.size();++i){
-            auto& target = (i<18) ? train : ((i<24) ? val : test);
-            for(char task:tasks) target.push_back(encode(level1Raw(task,pairs[i])));
+            std::string out=pairs[i]; std::reverse(out.begin(),out.end());
+            std::string raw=pairs[i]+">"+out+"\n";
+            if(i<48) train.push_back(encode(raw));
+            else if(i<60) val.push_back(encode(raw));
+            else test.push_back(encode(raw));
         }
 
-        // Replay controllato del Livello 0 per ridurre il catastrophic forgetting.
-        for(size_t i=0;i<36 && i<baseTrain.size();++i) train.push_back(baseTrain[i]);
+        // Replay 1:1 del Livello 0 per preservare la capacità copy3.
+        for(size_t i=0;i<48 && i<baseTrain.size();++i) train.push_back(baseTrain[i]);
     }
 };
 
