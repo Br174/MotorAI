@@ -79,8 +79,8 @@ public class MainActivity extends Activity {
 
         root.addView(text("MotorAI Seed 006", 28, true));
         root.addView(text("Cervello: Transformer causale nativo C++ · pesi iniziali casuali · nessun modello preaddestrato", 15, false));
-        root.addView(text("Curriculum: Livello 0 copy3 → Livello 1 pattern multipli con retention", 14, false));
-        root.addView(text("L1: a=copia2 · b=inverti2 (esempi: aef>, bef>) · ordina passa al Livello 2", 14, false));
+        root.addView(text("Curriculum: Livello 0 copy3 → Livello 1 inversione di coppie con retention", 14, false));
+        root.addView(text("L1: inverti una coppia (esempio: ef> → ef>fe). I pattern multipli arriveranno dopo.", 14, false));
 
         state = text("Stato: inizializzazione…", 16, true);
         curriculum = text("Livello: —", 15, true);
@@ -109,7 +109,7 @@ public class MainActivity extends Activity {
 
         root.addView(text("Prova MotorAI", 18, true));
         prompt = new EditText(this);
-        prompt.setHint("Esempi: abc> · aef> · bef> · cfe>");
+        prompt.setHint("Esempi: abc> · ef> · hi>");
         prompt.setText("abc>");
         root.addView(prompt);
         Button talk = button("💬 Genera");
@@ -253,7 +253,7 @@ public class MainActivity extends Activity {
                             state.setText("Stato: Livello 0 completato · passaggio automatico al Livello 1");
                             refreshMetrics();
                         });
-                    } else if (level >= 1 && step >= 1020) {
+                    } else if (level >= 1 && step >= 620) {
                         training.set(false);
                         ui(() -> {
                             state.setText("Stato: Livello 1 completato · checkpoint salvato");
@@ -301,7 +301,7 @@ public class MainActivity extends Activity {
         if (level <= 0) {
             return String.format(Locale.ITALY, "Passi: %d · Parametri: %,d · Test loss: %.4f · Generalizzazione: %.1f%%", step, params, loss, acc * 100.0);
         }
-        return String.format(Locale.ITALY, "Passi totali: %d · L1: %d/800 · Parametri: %,d · L1 loss: %.4f · L1 gen.: %.1f%% · Memoria L0: %.1f%%",
+        return String.format(Locale.ITALY, "Passi totali: %d · L1: %d/400 · Parametri: %,d · L1 loss: %.4f · L1 gen.: %.1f%% · Memoria L0: %.1f%%",
                 step, Math.max(0, step - 220), params, loss, acc * 100.0, retention * 100.0);
     }
 
