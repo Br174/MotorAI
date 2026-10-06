@@ -402,8 +402,10 @@ struct Dataset {
 
         // Livello 2: ordinamento con doppio separatore, più replay bilanciato di L1 e L0.
         train=l2tr; val=l2va; test=l2te;
+        // Peso L2 leggermente maggiore, replay L1 pieno e replay L0 rinforzato.
+        for(size_t i=0;i<24 && i<l2tr.size();++i) train.push_back(l2tr[i]);
         for(size_t i=0;i<48 && i<l1tr.size();++i) train.push_back(l1tr[i]);
-        for(size_t i=0;i<48 && i<l0tr.size();++i) train.push_back(l0tr[i]);
+        for(size_t i=0;i<72 && i<l0tr.size();++i) train.push_back(l0tr[i]);
     }
 };
 
@@ -450,7 +452,8 @@ void Engine::requestPause(){impl_->pause.store(true);} void Engine::clearPause()
 TrainResult Engine::train(int steps,int batch,float lr){
     std::lock_guard<std::mutex> guard(impl_->mu);
     clearPause(); auto t0=std::chrono::steady_clock::now(); std::mt19937 r(impl_->seed+1+impl_->step); int done=0;
-    for(int s=0;s<steps;++s){ if(impl_->pause.load())break; impl_->model.zeroGrad(); for(int b=0;b<batch;++b){auto&e=impl_->data.train[deterministicIndex(r, impl_->data.train.size())]; Tensor L=(impl_->curriculum<=0)?impl_->model.loss(e.x,e.y):impl_->model.lossRange(e.x,e.y,e.answer_start,e.answer_len+1); backward(L);} ++impl_->step; impl_->model.adamStep(lr,batch,impl_->step); ++done; }
+    float effective_lr = (impl_->curriculum>=2) ? lr*0.75f : lr;
+    for(int s=0;s<steps;++s){ if(impl_->pause.load())break; impl_->model.zeroGrad(); for(int b=0;b<batch;++b){auto&e=impl_->data.train[deterministicIndex(r, impl_->data.train.size())]; Tensor L=(impl_->curriculum<=0)?impl_->model.loss(e.x,e.y):impl_->model.lossRange(e.x,e.y,e.answer_start,e.answer_len+1); backward(L);} ++impl_->step; impl_->model.adamStep(effective_lr,batch,impl_->step); ++done; }
     auto t1=std::chrono::steady_clock::now(); TrainResult tr; tr.steps_completed=done; tr.train=eval(impl_->model,impl_->data.train); tr.validation=eval(impl_->model,impl_->data.val); tr.test=eval(impl_->model,impl_->data.test); tr.retention_l0=eval(impl_->model,impl_->data.retention_l0); tr.retention_l1=eval(impl_->model,impl_->data.retention_l1); tr.elapsed_seconds=std::chrono::duration<double>(t1-t0).count(); tr.paused=impl_->pause.load(); return tr;
 }
 
