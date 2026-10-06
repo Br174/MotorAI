@@ -37,6 +37,7 @@ Java_it_motorai_seed_MainActivity_nativeEvaluate(JNIEnv* env, jclass) {
     auto r2 = g_engine.evaluateRetentionL2();
     std::string s = "{\"step\":" + std::to_string(g_engine.globalStep()) +
         ",\"curriculum\":" + std::to_string(g_engine.curriculumLevel()) +
+        ",\"curriculum_start_step\":" + std::to_string(g_engine.curriculumStartStep()) +
         ",\"parameters\":" + std::to_string(g_engine.parameterCount()) +
         ",\"train_loss\":" + std::to_string(tr.loss) +
         ",\"train_accuracy\":" + std::to_string(tr.answer_accuracy) +
@@ -58,8 +59,10 @@ Java_it_motorai_seed_MainActivity_nativeTrainingEvaluate(JNIEnv* env, jclass) {
     auto va = g_engine.evaluateValidation();
     auto r0 = g_engine.evaluateRetentionL0();
     auto r1 = g_engine.evaluateRetentionL1();
+    auto r2 = g_engine.evaluateRetentionL2();
     std::string s = "{\"step\":" + std::to_string(g_engine.globalStep()) +
         ",\"curriculum\":" + std::to_string(g_engine.curriculumLevel()) +
+        ",\"curriculum_start_step\":" + std::to_string(g_engine.curriculumStartStep()) +
         ",\"parameters\":" + std::to_string(g_engine.parameterCount()) +
         ",\"train_loss\":" + std::to_string(tr.loss) +
         ",\"val_loss\":" + std::to_string(va.loss) +
