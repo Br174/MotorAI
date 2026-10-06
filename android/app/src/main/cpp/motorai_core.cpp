@@ -295,24 +295,86 @@ public:
     }
 };
 
-struct Example { std::vector<int>x,y; std::string raw; };
+struct Example {
+    std::vector<int> x,y;
+    std::string raw;
+    int answer_start = 0;
+    int answer_len = 0;
+};
 
 struct Dataset {
-    std::vector<Example> train,val,test;
+    std::vector<Example> train,val,test,retention;
+
     static int id(char c){ if(c=='\n')return 0; if(c=='>')return 1; if(c>='a'&&c<='i')return 2+(c-'a'); return -1; }
     static char ch(int id){ if(id==0)return '\n'; if(id==1)return '>'; if(id>=2&&id<=10)return char('a'+id-2); return '?'; }
-    static Example encode(const std::string&s){ std::vector<int>a; for(char c:s){int k=id(c);if(k<0)throw std::runtime_error("unsupported char");a.push_back(k);} return {std::vector<int>(a.begin(),a.end()-1),std::vector<int>(a.begin()+1,a.end()),s}; }
-    explicit Dataset(uint32_t seed){
+
+    static Example encode(const std::string&s){
+        std::vector<int>a;
+        for(char c:s){ int k=id(c); if(k<0)throw std::runtime_error("unsupported char"); a.push_back(k); }
+        auto sep=s.find('>');
+        if(sep==std::string::npos || s.empty() || s.back()!='\n') throw std::runtime_error("bad training example");
+        int answer_start=static_cast<int>(sep);
+        int answer_len=static_cast<int>(s.size()-sep-2);
+        return {std::vector<int>(a.begin(),a.end()-1),std::vector<int>(a.begin()+1,a.end()),s,answer_start,answer_len};
+    }
+
+    static void buildCopy3(uint32_t seed,std::vector<Example>&tr,std::vector<Example>&va,std::vector<Example>&te){
         std::vector<std::string> triples; std::string alphabet="abcdefghi";
-        for(char a:alphabet)for(char b:alphabet)if(b!=a)for(char c:alphabet)if(c!=a&&c!=b){ std::string s; s+=a;s+=b;s+=c;triples.push_back(s); }
+        for(char a:alphabet)for(char b:alphabet)if(b!=a)for(char c:alphabet)if(c!=a&&c!=b){
+            std::string s; s+=a;s+=b;s+=c; triples.push_back(s);
+        }
         std::mt19937 r(seed); deterministicShuffle(triples,r); triples.resize(120);
-        for(int i=0;i<120;++i){ std::string raw=triples[i]+">"+triples[i]+"\n"; if(i<90)train.push_back(encode(raw)); else if(i<105)val.push_back(encode(raw)); else test.push_back(encode(raw)); }
+        for(int i=0;i<120;++i){
+            std::string raw=triples[i]+">"+triples[i]+"\n";
+            if(i<90)tr.push_back(encode(raw)); else if(i<105)va.push_back(encode(raw)); else te.push_back(encode(raw));
+        }
+    }
+
+    static std::string level1Raw(char task,const std::string&pair){
+        std::string out=pair;
+        if(task=='b') std::reverse(out.begin(),out.end());
+        else if(task=='c' && out[0]>out[1]) std::swap(out[0],out[1]);
+        std::string raw; raw+=task; raw+=pair; raw+='>'; raw+=out; raw+='\n';
+        return raw;
+    }
+
+    explicit Dataset(uint32_t seed,int level=0){
+        std::vector<Example> baseTrain,baseVal,baseTest;
+        buildCopy3(seed,baseTrain,baseVal,baseTest);
+        if(level<=0){
+            train=std::move(baseTrain); val=std::move(baseVal); test=std::move(baseTest); retention=test;
+            return;
+        }
+
+        retention=baseTest;
+        std::vector<std::string> pairs; std::string symbols="defghi";
+        for(char a:symbols)for(char b:symbols)if(a!=b){ std::string p; p+=a; p+=b; pairs.push_back(p); }
+        std::mt19937 r(seed+1009); deterministicShuffle(pairs,r);
+
+        const char tasks[3]={'a','b','c'};
+        for(size_t i=0;i<pairs.size();++i){
+            auto& target = (i<18) ? train : ((i<24) ? val : test);
+            for(char task:tasks) target.push_back(encode(level1Raw(task,pairs[i])));
+        }
+
+        // Replay controllato del Livello 0 per ridurre il catastrophic forgetting.
+        for(size_t i=0;i<30 && i<baseTrain.size();++i) train.push_back(baseTrain[i]);
     }
 };
 
 Metrics eval(TinyTransformer&m,const std::vector<Example>&set){
+    if(set.empty()) return {};
     double loss=0; int correct=0,total=0;
-    for(auto&e:set){ Tensor logits=m.forward(e.x); Tensor L=crossEntropy(logits,e.y); loss+=L.n->data[0]; int t=logits.dim(0),v=logits.dim(1); for(int pos: {3,4,5}){ int best=0; float mx=-1e30f; for(int j=0;j<v;++j){float z=logits.n->data[pos*v+j];if(z>mx){mx=z;best=j;}} if(best==e.y[pos])++correct; ++total; } }
+    for(auto&e:set){
+        Tensor logits=m.forward(e.x); Tensor L=crossEntropy(logits,e.y); loss+=L.n->data[0];
+        int v=logits.dim(1);
+        for(int pos=e.answer_start; pos<e.answer_start+e.answer_len; ++pos){
+            int best=0; float mx=-1e30f;
+            for(int j=0;j<v;++j){ float z=logits.n->data[pos*v+j]; if(z>mx){mx=z;best=j;} }
+            if(best==e.y[pos]) ++correct;
+            ++total;
+        }
+    }
     return {(float)(loss/set.size()), total?float(correct)/total:0};
 }
 
@@ -322,8 +384,8 @@ std::string esc(const std::string&s){ std::string o; for(char c:s){ if(c=='\\'||
 
 class Engine::Impl {
 public:
-    uint32_t seed=174; TinyTransformer model; Dataset data; int step=0; std::atomic<bool> pause{false}; mutable std::mutex mu;
-    explicit Impl(uint32_t s):seed(s),model(s),data(s){}
+    uint32_t seed=174; TinyTransformer model; int curriculum=0; Dataset data; int step=0; std::atomic<bool> pause{false}; mutable std::mutex mu;
+    explicit Impl(uint32_t s):seed(s),model(s),curriculum(0),data(s,0){}
 };
 
 Engine::Engine(uint32_t seed):impl_(std::make_unique<Impl>(seed)){}
@@ -332,15 +394,18 @@ void Engine::reset(uint32_t seed){ impl_=std::make_unique<Impl>(seed); }
 Metrics Engine::evaluateTrain(){ std::lock_guard<std::mutex> g(impl_->mu); return eval(impl_->model,impl_->data.train); }
 Metrics Engine::evaluateValidation(){ std::lock_guard<std::mutex> g(impl_->mu); return eval(impl_->model,impl_->data.val); }
 Metrics Engine::evaluateTest(){ std::lock_guard<std::mutex> g(impl_->mu); return eval(impl_->model,impl_->data.test); }
+Metrics Engine::evaluateRetention(){ std::lock_guard<std::mutex> g(impl_->mu); return eval(impl_->model,impl_->data.retention); }
 int Engine::parameterCount() const{return impl_->model.parameterCount();}
 int Engine::globalStep() const{return impl_->step;}
+void Engine::setCurriculum(int level){ std::lock_guard<std::mutex> g(impl_->mu); level=level<=0?0:1; if(impl_->curriculum==level)return; impl_->curriculum=level; impl_->data=Dataset(impl_->seed,level); }
+int Engine::curriculumLevel() const{ std::lock_guard<std::mutex> g(impl_->mu); return impl_->curriculum; }
 void Engine::requestPause(){impl_->pause.store(true);} void Engine::clearPause(){impl_->pause.store(false);}
 
 TrainResult Engine::train(int steps,int batch,float lr){
     std::lock_guard<std::mutex> guard(impl_->mu);
     clearPause(); auto t0=std::chrono::steady_clock::now(); std::mt19937 r(impl_->seed+1+impl_->step); int done=0;
     for(int s=0;s<steps;++s){ if(impl_->pause.load())break; impl_->model.zeroGrad(); for(int b=0;b<batch;++b){auto&e=impl_->data.train[deterministicIndex(r, impl_->data.train.size())]; Tensor L=impl_->model.loss(e.x,e.y); backward(L);} ++impl_->step; impl_->model.adamStep(lr,batch,impl_->step); ++done; }
-    auto t1=std::chrono::steady_clock::now(); TrainResult tr; tr.steps_completed=done; tr.train=eval(impl_->model,impl_->data.train); tr.validation=eval(impl_->model,impl_->data.val); tr.test=eval(impl_->model,impl_->data.test); tr.elapsed_seconds=std::chrono::duration<double>(t1-t0).count(); tr.paused=impl_->pause.load(); return tr;
+    auto t1=std::chrono::steady_clock::now(); TrainResult tr; tr.steps_completed=done; tr.train=eval(impl_->model,impl_->data.train); tr.validation=eval(impl_->model,impl_->data.val); tr.test=eval(impl_->model,impl_->data.test); tr.retention=eval(impl_->model,impl_->data.retention); tr.elapsed_seconds=std::chrono::duration<double>(t1-t0).count(); tr.paused=impl_->pause.load(); return tr;
 }
 
 std::string Engine::generate(const std::string&prefix,int new_chars){
@@ -353,14 +418,65 @@ std::string Engine::generate(const std::string&prefix,int new_chars){
 
 bool Engine::saveCheckpoint(const std::string&dir) const{
     std::lock_guard<std::mutex> guard(impl_->mu);
-    try{ std::filesystem::create_directories(dir); std::ofstream w(dir+"/weights.bin",std::ios::binary); if(!w)return false; const char magic[8]={'M','O','T','A','I','0','0','4'}; w.write(magic,8); uint32_t ver=1,pc=impl_->model.p.size(),step=impl_->step,seed=impl_->seed; w.write((char*)&ver,4);w.write((char*)&seed,4);w.write((char*)&step,4);w.write((char*)&pc,4); for(auto&z:impl_->model.p){uint32_t nl=z.name.size(),sz=z.value.n->data.size();w.write((char*)&nl,4);w.write(z.name.data(),nl);w.write((char*)&sz,4);w.write((char*)z.value.n->data.data(),sz*sizeof(float));w.write((char*)z.m.data(),sz*sizeof(float));w.write((char*)z.v.data(),sz*sizeof(float));} w.close(); Metrics te=eval(const_cast<TinyTransformer&>(impl_->model),impl_->data.test); std::ofstream j(dir+"/checkpoint.json"); j<<"{\n  \"format\": \"MOTORAI_CHECKPOINT_NATIVE_V1\",\n  \"seed\": "<<impl_->seed<<",\n  \"global_step\": "<<impl_->step<<",\n  \"parameter_count\": "<<impl_->model.parameterCount()<<",\n  \"test_loss\": "<<te.loss<<",\n  \"test_answer_accuracy\": "<<te.answer_accuracy<<",\n  \"pretrained_model\": false,\n  \"weights_origin\": \"random_then_local_training\"\n}\n"; return (bool)j; }catch(...){return false;}
+    try{
+        std::filesystem::create_directories(dir);
+        std::ofstream w(dir+"/weights.bin",std::ios::binary); if(!w)return false;
+        const char magic[8]={'M','O','T','A','I','0','0','5'}; w.write(magic,8);
+        uint32_t ver=2,seed=impl_->seed,step=impl_->step,level=impl_->curriculum,pc=impl_->model.p.size();
+        w.write((char*)&ver,4); w.write((char*)&seed,4); w.write((char*)&step,4); w.write((char*)&level,4); w.write((char*)&pc,4);
+        for(auto&z:impl_->model.p){
+            uint32_t nl=z.name.size(),sz=z.value.n->data.size();
+            w.write((char*)&nl,4); w.write(z.name.data(),nl); w.write((char*)&sz,4);
+            w.write((char*)z.value.n->data.data(),sz*sizeof(float));
+            w.write((char*)z.m.data(),sz*sizeof(float)); w.write((char*)z.v.data(),sz*sizeof(float));
+        }
+        w.close();
+        Metrics te=eval(const_cast<TinyTransformer&>(impl_->model),impl_->data.test);
+        Metrics re=eval(const_cast<TinyTransformer&>(impl_->model),impl_->data.retention);
+        std::ofstream j(dir+"/checkpoint.json");
+        j<<"{\n  \"format\": \"MOTORAI_CHECKPOINT_NATIVE_V2\",\n  \"seed\": "<<impl_->seed
+         <<",\n  \"global_step\": "<<impl_->step<<",\n  \"curriculum_level\": "<<impl_->curriculum
+         <<",\n  \"parameter_count\": "<<impl_->model.parameterCount()
+         <<",\n  \"test_loss\": "<<te.loss<<",\n  \"test_answer_accuracy\": "<<te.answer_accuracy
+         <<",\n  \"retention_accuracy\": "<<re.answer_accuracy
+         <<",\n  \"pretrained_model\": false,\n  \"weights_origin\": \"random_then_local_training\"\n}\n";
+        return (bool)j;
+    }catch(...){return false;}
 }
 
 bool Engine::loadCheckpoint(const std::string&dir){
     std::lock_guard<std::mutex> guard(impl_->mu);
-    try{std::ifstream w(dir+"/weights.bin",std::ios::binary);if(!w)return false;char magic[8];w.read(magic,8);if(std::string(magic,8)!="MOTAI004")return false;uint32_t ver,seed,step,pc;w.read((char*)&ver,4);w.read((char*)&seed,4);w.read((char*)&step,4);w.read((char*)&pc,4);if(ver!=1||pc!=impl_->model.p.size())return false; for(auto&z:impl_->model.p){uint32_t nl,sz;w.read((char*)&nl,4);std::string name(nl,' ');w.read(name.data(),nl);w.read((char*)&sz,4);if(name!=z.name||sz!=z.value.n->data.size())return false;w.read((char*)z.value.n->data.data(),sz*sizeof(float));w.read((char*)z.m.data(),sz*sizeof(float));w.read((char*)z.v.data(),sz*sizeof(float));} if(!w)return false; impl_->seed=seed; impl_->data=Dataset(seed); impl_->step=step; return true;}catch(...){return false;}
+    try{
+        std::ifstream w(dir+"/weights.bin",std::ios::binary); if(!w)return false;
+        char magic[8]; w.read(magic,8); std::string m(magic,8);
+        uint32_t ver=0,seed=0,step=0,level=0,pc=0;
+        if(m=="MOTAI004"){
+            w.read((char*)&ver,4); w.read((char*)&seed,4); w.read((char*)&step,4); w.read((char*)&pc,4);
+            if(ver!=1) return false;
+            level=0;
+        }else if(m=="MOTAI005"){
+            w.read((char*)&ver,4); w.read((char*)&seed,4); w.read((char*)&step,4); w.read((char*)&level,4); w.read((char*)&pc,4);
+            if(ver!=2 || level>1) return false;
+        }else return false;
+        if(pc!=impl_->model.p.size())return false;
+        for(auto&z:impl_->model.p){
+            uint32_t nl,sz; w.read((char*)&nl,4); std::string name(nl,' '); w.read(name.data(),nl); w.read((char*)&sz,4);
+            if(name!=z.name||sz!=z.value.n->data.size())return false;
+            w.read((char*)z.value.n->data.data(),sz*sizeof(float));
+            w.read((char*)z.m.data(),sz*sizeof(float)); w.read((char*)z.v.data(),sz*sizeof(float));
+        }
+        if(!w)return false;
+        impl_->seed=seed; impl_->curriculum=static_cast<int>(level); impl_->data=Dataset(seed,impl_->curriculum); impl_->step=step;
+        return true;
+    }catch(...){return false;}
 }
 
-std::string Engine::statusJson() const{ std::lock_guard<std::mutex> guard(impl_->mu); Metrics te=eval(impl_->model,impl_->data.test); std::ostringstream s;s<<std::fixed<<std::setprecision(4)<<"{\"seed\":"<<impl_->seed<<",\"step\":"<<impl_->step<<",\"parameters\":"<<parameterCount()<<",\"test_loss\":"<<te.loss<<",\"test_accuracy\":"<<te.answer_accuracy<<",\"pretrained\":false}";return s.str(); }
-
+std::string Engine::statusJson() const{
+    std::lock_guard<std::mutex> guard(impl_->mu);
+    Metrics te=eval(impl_->model,impl_->data.test), re=eval(impl_->model,impl_->data.retention);
+    std::ostringstream s; s<<std::fixed<<std::setprecision(4)
+      <<"{\"seed\":"<<impl_->seed<<",\"step\":"<<impl_->step<<",\"curriculum\":"<<impl_->curriculum
+      <<",\"parameters\":"<<parameterCount()<<",\"test_loss\":"<<te.loss<<",\"test_accuracy\":"<<te.answer_accuracy
+      <<",\"retention_accuracy\":"<<re.answer_accuracy<<",\"pretrained\":false}";
+    return s.str();
 } // namespace motorai
