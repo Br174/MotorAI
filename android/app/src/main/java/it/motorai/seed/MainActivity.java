@@ -64,7 +64,7 @@ public class MainActivity extends Activity {
 
     @Override protected void onCreate(Bundle stateBundle) {
         super.onCreate(stateBundle);
-        setTitle("MotorAI Seed 003");
+        setTitle("MotorAI Seed 004");
 
         ScrollView scroll = new ScrollView(this);
         LinearLayout root = new LinearLayout(this);
@@ -72,7 +72,7 @@ public class MainActivity extends Activity {
         root.setPadding(20, 34, 20, 30);
         scroll.addView(root);
 
-        root.addView(text("MotorAI Seed 003", 28, true));
+        root.addView(text("MotorAI Seed 004", 28, true));
         root.addView(text("Cervello: Transformer causale nativo C++ · pesi iniziali casuali · nessun modello preaddestrato", 15, false));
         root.addView(text("Benchmark corrente: copy3 con TRAIN / VALIDATION / TEST separati", 14, false));
 
@@ -135,7 +135,7 @@ public class MainActivity extends Activity {
 
         runAsync(() -> {
             boolean resumed = currentCheckpoint().exists() && nativeLoadCheckpoint(currentCheckpoint().getAbsolutePath());
-            ui(() -> state.setText(resumed ? "Stato: checkpoint ripreso automaticamente" : "Stato: Seed 003 pronta da pesi casuali"));
+            ui(() -> state.setText(resumed ? "Stato: checkpoint ripreso automaticamente" : "Stato: Seed 004 pronta da pesi casuali"));
             refreshMetrics();
         });
     }
@@ -154,14 +154,47 @@ public class MainActivity extends Activity {
                         ui(() -> state.setText("Stato: training fermato automaticamente — " + g.reason));
                         break;
                     }
+
+                    JSONObject before = new JSONObject(nativeEvaluate());
+                    double beforeValLoss = before.optDouble("val_loss", Double.POSITIVE_INFINITY);
+                    double beforeValAcc = before.optDouble("val_accuracy", 0.0);
+
+                    // Checkpoint pre-blocco: se il blocco peggiora nettamente, torniamo qui.
+                    if (!rotateAndSaveCheckpoint()) {
+                        training.set(false);
+                        ui(() -> state.setText("Stato: impossibile creare checkpoint di sicurezza"));
+                        break;
+                    }
+
                     String result = nativeTrainChunk(20);
-                    rotateAndSaveCheckpoint();
                     JSONObject j = new JSONObject(result);
+                    double afterValLoss = j.optDouble("val_loss", Double.POSITIVE_INFINITY);
+                    double afterValAcc = j.optDouble("val_accuracy", 0.0);
+
+                    boolean numericFailure = !Double.isFinite(afterValLoss);
+                    boolean clearRegression = afterValLoss > (beforeValLoss * 1.50 + 0.10)
+                            && afterValAcc <= beforeValAcc;
+
+                    if (numericFailure || clearRegression) {
+                        nativeLoadCheckpoint(currentCheckpoint().getAbsolutePath());
+                        training.set(false);
+                        ui(() -> {
+                            state.setText("Stato: regressione rilevata · rollback automatico al checkpoint buono");
+                            refreshMetrics();
+                        });
+                        break;
+                    }
+
+                    rotateAndSaveCheckpoint();
                     String line = formatMetrics(j);
                     ui(() -> metrics.setText(line));
+
                     if (j.optInt("step", 0) >= 220) {
                         training.set(false);
-                        ui(() -> state.setText("Stato: benchmark Seed 003 completato · checkpoint salvato"));
+                        ui(() -> {
+                            state.setText("Stato: benchmark Seed 004 completato · checkpoint salvato");
+                            refreshMetrics();
+                        });
                     }
                 }
             } catch (Exception e) {
