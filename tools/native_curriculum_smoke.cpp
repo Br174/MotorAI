@@ -62,8 +62,9 @@ static bool run_one(unsigned seed){
     if(!save_reload(e,seed,3,resumed)) return false;
     resumed.setCurriculum(4);
     if(!train_until(resumed,4,6000)){
+        auto tr=resumed.evaluateTrain();
         auto va=resumed.evaluateValidation();
-        std::cerr<<"FAIL seed="<<seed<<" stage=L4_validation val="<<va.answer_accuracy
+        std::cerr<<"FAIL seed="<<seed<<" stage=L4_validation train="<<tr.answer_accuracy<<" train_loss="<<tr.loss<<" val="<<va.answer_accuracy<<" val_loss="<<va.loss
                  <<" r3="<<resumed.evaluateRetentionL3().answer_accuracy
                  <<" r2="<<resumed.evaluateRetentionL2().answer_accuracy
                  <<" r1="<<resumed.evaluateRetentionL1().answer_accuracy
