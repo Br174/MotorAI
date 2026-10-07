@@ -657,8 +657,8 @@ struct Dataset {
             std::rotate(d.begin(),d.begin()+((pairIndex*7)%26),d.end());
             ++pairIndex;
             for(int k=0;k<26;++k){
-                if(k<16) append(a,b,d[k],tr);
-                else if(k<21) append(a,b,d[k],va);
+                if(k<20) append(a,b,d[k],tr);
+                else if(k<23) append(a,b,d[k],va);
                 else append(a,b,d[k],te);
             }
         }
@@ -729,7 +729,7 @@ struct Dataset {
         }
 
         // Livello 5: Auto-Training V1 gradino A. Uguaglianza adiacente a/b con distrattori a-z.
-        // Segmenti: L5=64, L4=160, L3=48, L2=48, L1=48, L0=72.
+        // Segmenti: L5=80, L4=160, L3=48, L2=48, L1=48, L0=72.
         train=l5tr; val=l5va; test=l5te;
         for(size_t i=0;i<160 && i<l4tr.size();++i) train.push_back(l4tr[i]);
         for(size_t i=0;i<48 && i<l3tr.size();++i) train.push_back(l3tr[i]);
@@ -828,9 +828,9 @@ TrainResult Engine::train(int steps,int batch,float lr){
                 else if(b < 18) idx=1140+deterministicIndex(r,48);
                 else if(b < 21) idx=1188+deterministicIndex(r,48);
                 else idx=1236+deterministicIndex(r,72);
-            }else if(impl_->curriculum>=5 && impl_->data.train.size()>=440){
+            }else if(impl_->curriculum>=5 && impl_->data.train.size()>=456){
                 // L5 modular and isolated: 100% new-task batches.
-                idx=deterministicIndex(r,64);
+                idx=deterministicIndex(r,80);
             }else{
                 idx=deterministicIndex(r,impl_->data.train.size());
             }
