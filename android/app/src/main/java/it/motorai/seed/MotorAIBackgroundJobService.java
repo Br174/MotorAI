@@ -18,15 +18,19 @@ import java.io.File;
 import java.util.Locale;
 
 public class MotorAIBackgroundJobService extends JobService {
-    private static final int JOB_ID = 11011;
+    private static final int PERIODIC_JOB_ID = 11011;
+    private static final int KICK_JOB_ID = 11012;
     private static final long PERIOD_MS = 20L * 60L * 1000L;
+    private static final long KICK_DELAY_MS = 5_000L;
+    private static final long MAX_WAKE_MS = 120_000L;
+    private static final int MAX_CHUNKS_PER_WAKE = 8;
     private volatile Thread worker;
 
     public static void schedule(Context context) {
         try {
             JobScheduler scheduler = (JobScheduler) context.getSystemService(Context.JOB_SCHEDULER_SERVICE);
             if (scheduler == null) return;
-            JobInfo info = new JobInfo.Builder(JOB_ID,
+            JobInfo info = new JobInfo.Builder(PERIODIC_JOB_ID,
                     new ComponentName(context, MotorAIBackgroundJobService.class))
                     .setPeriodic(PERIOD_MS)
                     .setPersisted(true)
@@ -39,16 +43,37 @@ public class MotorAIBackgroundJobService extends JobService {
         }
     }
 
+    public static void scheduleKick(Context context) {
+        try {
+            JobScheduler scheduler = (JobScheduler) context.getSystemService(Context.JOB_SCHEDULER_SERVICE);
+            if (scheduler == null) return;
+            JobInfo info = new JobInfo.Builder(KICK_JOB_ID,
+                    new ComponentName(context, MotorAIBackgroundJobService.class))
+                    .setMinimumLatency(KICK_DELAY_MS)
+                    .setPersisted(true)
+                    .setRequiresCharging(true)
+                    .build();
+            scheduler.schedule(info);
+            context.getSharedPreferences("motorai_background", Context.MODE_PRIVATE)
+                    .edit().putLong("last_kick_scheduled_ms", System.currentTimeMillis()).apply();
+        } catch (Exception ignored) {
+        }
+    }
+
     @Override public boolean onStartJob(JobParameters params) {
         worker = new Thread(() -> {
             boolean reschedule = false;
+            boolean continueSoon = false;
             try {
-                runOneCycle();
+                continueSoon = runOneCycle();
             } catch (Throwable e) {
                 appendFailure("Background Auto-Training: " + safe(e.getMessage()));
                 reschedule = true;
             } finally {
                 jobFinished(params, reschedule);
+                if (!reschedule && continueSoon && !MainActivity.isUiActive()) {
+                    scheduleKick(getApplicationContext());
+                }
             }
         }, "MotorAI-Background");
         worker.start();
@@ -60,23 +85,23 @@ public class MotorAIBackgroundJobService extends JobService {
         return true;
     }
 
-    private void runOneCycle() throws Exception {
+    private boolean runOneCycle() throws Exception {
         SharedPreferences runtime = getSharedPreferences("motorai_runtime", MODE_PRIVATE);
         if (MainActivity.isUiActive()) {
             sendCurrentTelemetry("background_skip_ui_active");
-            return;
+            return false;
         }
 
         File current = checkpoint("current");
         if (!current.exists() || !MainActivity.nativeLoadCheckpoint(current.getAbsolutePath())) {
             appendFailure("Background Auto-Training: checkpoint current non disponibile");
-            return;
+            return false;
         }
 
         Guard guard = readGuard();
         if (!guard.allowed) {
             sendCurrentTelemetry("background_pause_" + guard.reason);
-            return;
+            return false;
         }
 
         SharedPreferences evo = getSharedPreferences("motorai_evolution", MODE_PRIVATE);
@@ -85,7 +110,7 @@ public class MotorAIBackgroundJobService extends JobService {
 
         if (level < 4) {
             sendCurrentTelemetry("background_wait_baseline_L4");
-            return;
+            return false;
         }
 
         if (level == 4 && !l5Accepted) {
@@ -99,14 +124,14 @@ public class MotorAIBackgroundJobService extends JobService {
                 appendFailure("Background Auto-Training: baseline L4 sotto soglia");
                 MotorAIBridgeClient.sendSnapshot(this,
                         MotorAIBridgeClient.buildSnapshot(this, base, "baseline_L4_sotto_soglia"));
-                return;
+                return false;
             }
 
             File baseline = checkpoint("autotrain-baseline");
             deleteTree(baseline);
             if (!MainActivity.nativeSaveCheckpoint(baseline.getAbsolutePath())) {
                 appendFailure("Background Auto-Training: impossibile salvare autotrain-baseline");
-                return;
+                return false;
             }
 
             MainActivity.nativeSetCurriculum(5);
@@ -114,7 +139,7 @@ public class MotorAIBackgroundJobService extends JobService {
                 appendFailure("Background Auto-Training: checkpoint iniziale L5 fallito");
                 MainActivity.nativeLoadCheckpoint(baseline.getAbsolutePath());
                 rotateAndSave();
-                return;
+                return false;
             }
             runtime.edit().putInt("l5_stable_passes", 0).apply();
             appendProgress("Auto-Training background: L5 avviato automaticamente");
@@ -122,11 +147,41 @@ public class MotorAIBackgroundJobService extends JobService {
         }
 
         if (level >= 5 && !l5Accepted) {
-            runLevel5Chunk(runtime, evo);
-            return;
+            long wakeStarted = System.currentTimeMillis();
+            for (int chunk = 0; chunk < MAX_CHUNKS_PER_WAKE; chunk++) {
+                if (MainActivity.isUiActive()) {
+                    sendCurrentTelemetry("background_pause_ui_active");
+                    return false;
+                }
+
+                Guard chunkGuard = readGuard();
+                if (!chunkGuard.allowed) {
+                    sendCurrentTelemetry("background_pause_" + chunkGuard.reason);
+                    return false;
+                }
+
+                runLevel5Chunk(runtime, evo);
+
+                if (evo.getBoolean("l5_accepted", false)) {
+                    return false;
+                }
+                if (MainActivity.nativeCurriculum() < 5) {
+                    return false;
+                }
+                if (System.currentTimeMillis() - wakeStarted >= MAX_WAKE_MS) {
+                    break;
+                }
+            }
+
+            sendCurrentTelemetry("background_burst_checkpoint");
+            return !MainActivity.isUiActive()
+                    && !evo.getBoolean("l5_accepted", false)
+                    && MainActivity.nativeCurriculum() >= 5
+                    && readGuard().allowed;
         }
 
         sendCurrentTelemetry("background_idle_consolidated");
+        return false;
     }
 
     private void runLevel5Chunk(SharedPreferences runtime, SharedPreferences evo) throws Exception {
