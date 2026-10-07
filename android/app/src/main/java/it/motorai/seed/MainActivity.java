@@ -57,7 +57,10 @@ public class MainActivity extends Activity {
     private TextView learningNow;
     private TextView latestProgress;
     private static final long DIAGNOSTIC_INTERVAL_MS = 20L * 60L * 1000L;
+    private static final AtomicBoolean UI_ACTIVE = new AtomicBoolean(false);
     private final AtomicBoolean training = new AtomicBoolean(false);
+
+    public static boolean isUiActive() { return UI_ACTIVE.get(); }
 
     private File checkpointRoot() { return new File(getFilesDir(), "motorai/checkpoints"); }
     private File currentCheckpoint() { return new File(checkpointRoot(), "current"); }
@@ -1087,14 +1090,12 @@ public class MainActivity extends Activity {
 
     @Override protected void onStart() {
         super.onStart();
-        getSharedPreferences("motorai_runtime", MODE_PRIVATE)
-                .edit().putBoolean("ui_active", true).apply();
+        UI_ACTIVE.set(true);
         MotorAIBackgroundJobService.schedule(this);
     }
 
     @Override protected void onStop() {
-        getSharedPreferences("motorai_runtime", MODE_PRIVATE)
-                .edit().putBoolean("ui_active", false).apply();
+        UI_ACTIVE.set(false);
         super.onStop();
         if (training.get()) stopTraining("App in background");
         else runAsync(this::rotateAndSaveCheckpoint);
