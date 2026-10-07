@@ -19,9 +19,18 @@ import java.nio.charset.StandardCharsets;
 
 import javax.net.ssl.HttpsURLConnection;
 
+/**
+ * Diagnostic Bridge V1.
+ *
+ * Transport: PostHog EU public capture API.
+ * The project token is explicitly client-safe; no personal API key or GitHub token is stored here.
+ * Only technical MotorAI diagnostics are sent.
+ */
 public final class MotorAIBridgeClient {
-    private static final String BASE = "https://motorai-diagnostic-bridge-rl5jwl.v2.appdeploy.ai";
-    private static final String CHANNEL = "motorai-br174-primary-v1";
+    private static final String CAPTURE_URL = "https://eu.i.posthog.com/i/v0/e";
+    private static final String PROJECT_TOKEN = "phc_qcq4jwDmBiNJhThhMatbRpYS9XB7p9mFKC9maCJ969DW";
+    private static final String DISTINCT_ID = "motorai-primary-device";
+    private static final String EVENT = "motorai_diagnostic_snapshot";
     private static final String PREFS = "motorai_bridge";
 
     private MotorAIBridgeClient() {}
@@ -73,6 +82,8 @@ public final class MotorAIBridgeClient {
             out.put("failures", failures == null ? "" : failures);
             out.put("status", status == null ? "" : status);
             out.put("deviceTimestamp", System.currentTimeMillis());
+            out.put("bridgeVersion", 1);
+            out.put("$process_person_profile", false);
         } catch (Exception ignored) {
         }
         return out;
@@ -85,41 +96,52 @@ public final class MotorAIBridgeClient {
     }
 
     public static boolean sendSnapshot(Context context, JSONObject snapshot) {
+        HttpsURLConnection c = null;
         try {
-            SharedPreferences p = context.getSharedPreferences(PREFS, Context.MODE_PRIVATE);
-            String deviceId = p.getString("device_id", "");
-            String writeKey = p.getString("write_key", "");
+            JSONObject body = new JSONObject();
+            body.put("api_key", PROJECT_TOKEN);
+            body.put("distinct_id", DISTINCT_ID);
+            body.put("event", EVENT);
+            body.put("properties", snapshot);
 
-            if (deviceId == null || deviceId.isEmpty() || writeKey == null || writeKey.isEmpty()) {
-                JSONObject reg = new JSONObject();
-                reg.put("channel", CHANNEL);
-                JSONObject response = post("/api/register", reg);
-                deviceId = response.optString("deviceId", "");
-                writeKey = response.optString("writeKey", "");
-                if (deviceId.isEmpty() || writeKey.isEmpty()) {
-                    recordBridgeError(context, "Registrazione bridge senza credenziali");
-                    return false;
-                }
-                p.edit().putString("device_id", deviceId).putString("write_key", writeKey).apply();
+            URL url = new URL(CAPTURE_URL);
+            c = (HttpsURLConnection) url.openConnection();
+            c.setRequestMethod("POST");
+            c.setConnectTimeout(10000);
+            c.setReadTimeout(10000);
+            c.setDoOutput(true);
+            c.setRequestProperty("Content-Type", "application/json; charset=utf-8");
+
+            byte[] bytes = body.toString().getBytes(StandardCharsets.UTF_8);
+            c.setFixedLengthStreamingMode(bytes.length);
+            try (OutputStream os = c.getOutputStream()) {
+                os.write(bytes);
             }
 
-            JSONObject body = new JSONObject();
-            body.put("channel", CHANNEL);
-            body.put("deviceId", deviceId);
-            body.put("writeKey", writeKey);
-            body.put("snapshot", snapshot);
+            int code = c.getResponseCode();
+            InputStream stream = code >= 200 && code < 300 ? c.getInputStream() : c.getErrorStream();
+            StringBuilder response = new StringBuilder();
+            if (stream != null) {
+                try (BufferedReader r = new BufferedReader(new InputStreamReader(stream, StandardCharsets.UTF_8))) {
+                    String line;
+                    while ((line = r.readLine()) != null) response.append(line);
+                }
+            }
 
-            JSONObject response = post("/api/telemetry", body);
-            boolean ok = response.optBoolean("ok", false);
-            if (ok) {
-                p.edit().putLong("last_upload_ms", System.currentTimeMillis())
+            SharedPreferences p = context.getSharedPreferences(PREFS, Context.MODE_PRIVATE);
+            if (code >= 200 && code < 300) {
+                p.edit()
+                        .putLong("last_upload_ms", System.currentTimeMillis())
                         .remove("last_error")
                         .apply();
                 return true;
             }
-            recordBridgeError(context, "Bridge: risposta non valida");
+
+            recordBridgeError(context, "PostHog HTTP " + code + " " + response);
         } catch (Exception e) {
-            recordBridgeError(context, "Bridge: " + safe(e.getMessage()));
+            recordBridgeError(context, "PostHog: " + safe(e.getMessage()));
+        } finally {
+            if (c != null) c.disconnect();
         }
         return false;
     }
@@ -127,6 +149,11 @@ public final class MotorAIBridgeClient {
     public static long lastUploadMs(Context context) {
         return context.getSharedPreferences(PREFS, Context.MODE_PRIVATE)
                 .getLong("last_upload_ms", 0L);
+    }
+
+    public static String lastError(Context context) {
+        return context.getSharedPreferences(PREFS, Context.MODE_PRIVATE)
+                .getString("last_error", "");
     }
 
     private static void recordBridgeError(Context context, String message) {
@@ -137,35 +164,7 @@ public final class MotorAIBridgeClient {
 
     private static String safe(String s) {
         if (s == null) return "errore sconosciuto";
-        return s.replace('\n', ' ').replace('\r', ' ').substring(0, Math.min(300, s.length()));
-    }
-
-    private static JSONObject post(String path, JSONObject body) throws Exception {
-        URL url = new URL(BASE + path);
-        HttpsURLConnection c = (HttpsURLConnection) url.openConnection();
-        c.setRequestMethod("POST");
-        c.setConnectTimeout(10000);
-        c.setReadTimeout(10000);
-        c.setDoOutput(true);
-        c.setRequestProperty("Content-Type", "application/json; charset=utf-8");
-
-        byte[] bytes = body.toString().getBytes(StandardCharsets.UTF_8);
-        c.setFixedLengthStreamingMode(bytes.length);
-        try (OutputStream os = c.getOutputStream()) {
-            os.write(bytes);
-        }
-
-        int code = c.getResponseCode();
-        InputStream stream = code >= 200 && code < 300 ? c.getInputStream() : c.getErrorStream();
-        StringBuilder text = new StringBuilder();
-        if (stream != null) {
-            try (BufferedReader r = new BufferedReader(new InputStreamReader(stream, StandardCharsets.UTF_8))) {
-                String line;
-                while ((line = r.readLine()) != null) text.append(line);
-            }
-        }
-        c.disconnect();
-        if (code < 200 || code >= 300) throw new IllegalStateException("HTTP " + code + " " + text);
-        return new JSONObject(text.toString());
+        String v = s.replace('\n', ' ').replace('\r', ' ');
+        return v.substring(0, Math.min(300, v.length()));
     }
 }
