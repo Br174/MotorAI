@@ -349,26 +349,10 @@ public:
         Tensor mlp=linear(h,"fc2.w","fc2.b");
         Tensor x2=add(x1,mlp);
 
-        Tensor za=layerNorm(x2,P("grow2.ln.g"),P("grow2.ln.b"));
-        Tensor gq=linear(za,"grow2.q.w","grow2.q.b");
-        Tensor gk=linear(za,"grow2.k.w","grow2.k.b");
-        Tensor gv=linear(za,"grow2.v.w","grow2.v.b");
-        Tensor gscores=scale(matmul(gq,transpose2(gk)),1.0f/std::sqrt((float)d));
-        Tensor gatt=softmaxRows(causalMask(gscores));
-        Tensor gy=matmul(gatt,gv);
-        Tensor gproj=linear(gy,"grow2.o.w","grow2.o.b");
-        Tensor xa=add(x2,gproj);
-
-        Tensor zg=layerNorm(xa,P("grow1.ln.g"),P("grow1.ln.b"));
-        Tensor gh=gelu(linear(zg,"grow1.fc1.w","grow1.fc1.b"));
-        Tensor gd=linear(gh,"grow1.fc2.w","grow1.fc2.b");
-        Tensor xg=add(xa,gd);
-
-        // L5 modular channel: only the dedicated ! command activates it.
         bool l5control=!ids.empty() && ids[0]==31;
-        Tensor xg3=xg;
+        Tensor xa;
         if(l5control){
-            Tensor z3=layerNorm(xg,P("grow3.ln.g"),P("grow3.ln.b"));
+            Tensor z3=layerNorm(x2,P("grow3.ln.g"),P("grow3.ln.b"));
             Tensor q3=linear(z3,"grow3.q.w","grow3.q.b");
             Tensor k3=linear(z3,"grow3.k.w","grow3.k.b");
             Tensor v3=linear(z3,"grow3.v.w","grow3.v.b");
@@ -376,8 +360,23 @@ public:
             Tensor a3=softmaxRows(causalMask(s3));
             Tensor y3=matmul(a3,v3);
             Tensor p3=linear(y3,"grow3.o.w","grow3.o.b");
-            xg3=add(xg,p3);
+            xa=add(x2,p3);
+        }else{
+            Tensor za=layerNorm(x2,P("grow2.ln.g"),P("grow2.ln.b"));
+            Tensor gq=linear(za,"grow2.q.w","grow2.q.b");
+            Tensor gk=linear(za,"grow2.k.w","grow2.k.b");
+            Tensor gv=linear(za,"grow2.v.w","grow2.v.b");
+            Tensor gscores=scale(matmul(gq,transpose2(gk)),1.0f/std::sqrt((float)d));
+            Tensor gatt=softmaxRows(causalMask(gscores));
+            Tensor gy=matmul(gatt,gv);
+            Tensor gproj=linear(gy,"grow2.o.w","grow2.o.b");
+            xa=add(x2,gproj);
         }
+
+        Tensor zg=layerNorm(xa,P("grow1.ln.g"),P("grow1.ln.b"));
+        Tensor gh=gelu(linear(zg,"grow1.fc1.w","grow1.fc1.b"));
+        Tensor gd=linear(gh,"grow1.fc2.w","grow1.fc2.b");
+        Tensor xg=add(xa,gd);
 
         Tensor zf=layerNorm(xg3,P("lnf.g"),P("lnf.b"));
         Tensor logits=matmul(zf,P("head.w"));
@@ -405,6 +404,43 @@ public:
     }
     Tensor loss(const std::vector<int>& x,const std::vector<int>& y){ return crossEntropy(forward(x),y); }
     Tensor lossRange(const std::vector<int>& x,const std::vector<int>& y,int start,int count){ return crossEntropyRange(forward(x),y,start,count); }
+
+    void copyParamValue(const std::string& src,const std::string& dst){
+        Param& a=PP(src); Param& b=PP(dst);
+        if(a.value.n->data.size()!=b.value.n->data.size()) throw std::runtime_error("growth transfer shape mismatch");
+        b.value.n->data=a.value.n->data;
+        std::fill(b.m.begin(),b.m.end(),0.0f);
+        std::fill(b.v.begin(),b.v.end(),0.0f);
+    }
+
+    void prepareLevel5FromLevel4(){
+        copyParamValue("grow2.ln.g","grow3.ln.g");
+        copyParamValue("grow2.ln.b","grow3.ln.b");
+        copyParamValue("grow2.q.w","grow3.q.w");
+        copyParamValue("grow2.q.b","grow3.q.b");
+        copyParamValue("grow2.k.w","grow3.k.w");
+        copyParamValue("grow2.k.b","grow3.k.b");
+        copyParamValue("grow2.v.w","grow3.v.w");
+        copyParamValue("grow2.v.b","grow3.v.b");
+        copyParamValue("grow2.o.w","grow3.o.w");
+        copyParamValue("grow2.o.b","grow3.o.b");
+
+        Param& tok=PP("token");
+        for(int j=0;j<d;++j){
+            tok.value.n->data[31*d+j]=tok.value.n->data[11*d+j];
+            tok.m[31*d+j]=0.0f;
+            tok.v[31*d+j]=0.0f;
+        }
+
+        Param& cw=PP("grow3.cls.w");
+        Param& cb=PP("grow3.cls.b");
+        std::fill(cw.value.n->data.begin(),cw.value.n->data.end(),0.0f);
+        std::fill(cw.m.begin(),cw.m.end(),0.0f);
+        std::fill(cw.v.begin(),cw.v.end(),0.0f);
+        std::fill(cb.value.n->data.begin(),cb.value.n->data.end(),0.0f);
+        std::fill(cb.m.begin(),cb.m.end(),0.0f);
+        std::fill(cb.v.begin(),cb.v.end(),0.0f);
+    }
 
     float updateScale(const Param& z,size_t i,int curriculum) const {
         bool g1=z.name.rfind("grow1.",0)==0;
@@ -729,7 +765,16 @@ Metrics Engine::evaluateRetentionL3(){ std::lock_guard<std::mutex> g(impl_->mu);
 Metrics Engine::evaluateRetentionL4(){ std::lock_guard<std::mutex> g(impl_->mu); return eval(impl_->model,impl_->data.retention_l4); }
 int Engine::parameterCount() const{return impl_->model.parameterCount();}
 int Engine::globalStep() const{return impl_->step;}
-void Engine::setCurriculum(int level){ std::lock_guard<std::mutex> g(impl_->mu); level=std::max(0,std::min(5,level)); if(impl_->curriculum==level)return; impl_->curriculum=level; impl_->curriculum_start_step=impl_->step; impl_->model.resetOptimizerMoments(); impl_->data=Dataset(impl_->seed,level); }
+void Engine::setCurriculum(int level){
+    std::lock_guard<std::mutex> g(impl_->mu);
+    level=std::max(0,std::min(5,level));
+    if(impl_->curriculum==level)return;
+    if(level==5 && impl_->curriculum<5) impl_->model.prepareLevel5FromLevel4();
+    impl_->curriculum=level;
+    impl_->curriculum_start_step=impl_->step;
+    impl_->model.resetOptimizerMoments();
+    impl_->data=Dataset(impl_->seed,level);
+}
 int Engine::curriculumLevel() const{ std::lock_guard<std::mutex> g(impl_->mu); return impl_->curriculum; }
 int Engine::curriculumStartStep() const{ std::lock_guard<std::mutex> g(impl_->mu); return impl_->curriculum_start_step; }
 void Engine::requestPause(){impl_->pause.store(true);} void Engine::clearPause(){impl_->pause.store(false);}
