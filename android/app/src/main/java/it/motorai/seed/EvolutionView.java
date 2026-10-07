@@ -8,7 +8,9 @@ import android.graphics.Path;
 import android.util.AttributeSet;
 import android.view.View;
 
+import java.text.SimpleDateFormat;
 import java.util.ArrayList;
+import java.util.Date;
 import java.util.List;
 import java.util.Locale;
 
@@ -18,13 +20,15 @@ import java.util.Locale;
  */
 public class EvolutionView extends View {
     public static class Point {
+        public final long timestampMs;
         public final int step;
         public final float learning;
         public final float memory;
         public final float evolution;
         public final String label;
 
-        public Point(int step, float learning, float memory, float evolution, String label) {
+        public Point(long timestampMs, int step, float learning, float memory, float evolution, String label) {
+            this.timestampMs = timestampMs;
             this.step = step;
             this.learning = learning;
             this.memory = memory;
@@ -34,6 +38,7 @@ public class EvolutionView extends View {
     }
 
     private final List<Point> points = new ArrayList<>();
+    private boolean timeAxis = false;
     private final Paint grid = new Paint(Paint.ANTI_ALIAS_FLAG);
     private final Paint axis = new Paint(Paint.ANTI_ALIAS_FLAG);
     private final Paint learningPaint = new Paint(Paint.ANTI_ALIAS_FLAG);
@@ -80,6 +85,11 @@ public class EvolutionView extends View {
         invalidate();
     }
 
+    public void setTimeAxis(boolean enabled) {
+        timeAxis = enabled;
+        invalidate();
+    }
+
     @Override protected void onDraw(Canvas canvas) {
         super.onDraw(canvas);
 
@@ -109,13 +119,34 @@ public class EvolutionView extends View {
         int maxStep = points.get(points.size() - 1).step;
         if (maxStep <= minStep) maxStep = minStep + 1;
 
+        long minTime = Long.MAX_VALUE;
+        long maxTime = Long.MIN_VALUE;
+        if (timeAxis) {
+            for (Point p : points) {
+                if (p.timestampMs <= 0L) continue;
+                minTime = Math.min(minTime, p.timestampMs);
+                maxTime = Math.max(maxTime, p.timestampMs);
+            }
+            if (minTime == Long.MAX_VALUE) {
+                minTime = 0L;
+                maxTime = 1L;
+            } else if (maxTime <= minTime) {
+                maxTime = minTime + 1L;
+            }
+        }
+
         Path lp = new Path();
         Path mp = new Path();
         Path ep = new Path();
 
         for (int i = 0; i < points.size(); i++) {
             Point p = points.get(i);
-            float x = left + ((p.step - minStep) / (float)(maxStep - minStep)) * width;
+            float x;
+            if (timeAxis && p.timestampMs > 0L) {
+                x = left + ((p.timestampMs - minTime) / (float)(maxTime - minTime)) * width;
+            } else {
+                x = left + ((p.step - minStep) / (float)(maxStep - minStep)) * width;
+            }
             float yl = bottom - clamp(p.learning) / 100f * height;
             float ym = bottom - clamp(p.memory) / 100f * height;
             float ye = bottom - clamp(p.evolution) / 100f * height;
@@ -144,8 +175,25 @@ public class EvolutionView extends View {
         canvas.drawPath(mp, memoryPaint);
         canvas.drawPath(ep, evolutionPaint);
 
-        canvas.drawText(String.format(Locale.ITALY, "Passi %d → %d", minStep, maxStep),
-                left, getHeight() - dpF(5), textPaint);
+        Point last = points.get(points.size() - 1);
+        float lastX;
+        if (timeAxis && last.timestampMs > 0L) {
+            lastX = left + ((last.timestampMs - minTime) / (float)(maxTime - minTime)) * width;
+        } else {
+            lastX = left + ((last.step - minStep) / (float)(maxStep - minStep)) * width;
+        }
+        canvas.drawCircle(lastX, bottom - clamp(last.learning) / 100f * height, dpF(2.6f), learningPaint);
+        canvas.drawCircle(lastX, bottom - clamp(last.memory) / 100f * height, dpF(2.6f), memoryPaint);
+        canvas.drawCircle(lastX, bottom - clamp(last.evolution) / 100f * height, dpF(2.6f), evolutionPaint);
+
+        if (timeAxis && minTime > 0L) {
+            String start = formatTime(minTime, maxTime - minTime);
+            String end = formatTime(maxTime, maxTime - minTime);
+            canvas.drawText("Tempo " + start + " → " + end, left, getHeight() - dpF(5), textPaint);
+        } else {
+            canvas.drawText(String.format(Locale.ITALY, "Passi %d → %d", minStep, maxStep),
+                    left, getHeight() - dpF(5), textPaint);
+        }
     }
 
     private void drawLegend(Canvas canvas, float x, float y) {
@@ -165,6 +213,14 @@ public class EvolutionView extends View {
         fill.setColor(evolutionPaint.getColor());
         canvas.drawCircle(x3 + dpF(5), y, dpF(4), fill);
         canvas.drawText("Evoluzione", x3 + dpF(13), y + dpF(4), textPaint);
+    }
+
+    private String formatTime(long timestamp, long spanMs) {
+        String pattern;
+        if (spanMs <= 24L * 60L * 60L * 1000L) pattern = "HH:mm:ss";
+        else if (spanMs <= 31L * 24L * 60L * 60L * 1000L) pattern = "dd/MM HH:mm";
+        else pattern = "dd/MM/yy";
+        return new SimpleDateFormat(pattern, Locale.ITALY).format(new Date(timestamp));
     }
 
     private static float clamp(float v) {
