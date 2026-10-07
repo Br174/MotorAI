@@ -279,6 +279,7 @@ public:
 
     Tensor& P(const std::string& name){ for(auto& z:p)if(z.name==name)return z.value; throw std::runtime_error("missing param "+name); }
     const Tensor& P(const std::string& name) const { for(auto& z:p)if(z.name==name)return z.value; throw std::runtime_error("missing param "+name); }
+    Param& PP(const std::string& name){ for(auto& z:p)if(z.name==name)return z; throw std::runtime_error("missing param "+name); }
 
     void addParam(const std::string& name,std::vector<int> shape,bool normal=true,float fill=0.0f){
         std::vector<float> data(numel(shape));
