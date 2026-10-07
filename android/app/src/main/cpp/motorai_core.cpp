@@ -134,6 +134,41 @@ Tensor scale(const Tensor& a,float s) {
     return y;
 }
 
+Tensor binaryAnswerOverride(const Tensor& base,const Tensor& binary,const std::vector<int>& ids,int plusId=12,int minusId=13) {
+    if(base.n->shape.size()!=2 || binary.n->shape.size()!=2 ||
+       base.dim(0)!=binary.dim(0) || binary.dim(1)!=2)
+        throw std::runtime_error("binary answer override shape mismatch");
+    int rows=base.dim(0), vocab=base.dim(1);
+    std::vector<float> out=base.n->data;
+    for(int i=0;i<rows && i<(int)ids.size();++i){
+        if(ids[i]==1){
+            out[i*vocab+0]=-1e9f;
+            out[i*vocab+plusId]=binary.n->data[i*2+0];
+            out[i*vocab+minusId]=binary.n->data[i*2+1];
+        }
+    }
+    bool req=base.n->requires_grad||binary.n->requires_grad;
+    Tensor y=tensor({rows,vocab},std::move(out),req);
+    y.n->parents={base.n,binary.n};
+    y.n->backward=[pb=base.n,pbin=binary.n,py=y.n.get(),ids,rows,vocab,plusId,minusId]{
+        if(pb->requires_grad){
+            for(int i=0;i<rows;++i) for(int j=0;j<vocab;++j){
+                bool replaced=i<(int)ids.size() && ids[i]==1 && (j==0 || j==plusId || j==minusId);
+                if(!replaced) pb->grad[i*vocab+j]+=py->grad[i*vocab+j];
+            }
+        }
+        if(pbin->requires_grad){
+            for(int i=0;i<rows && i<(int)ids.size();++i){
+                if(ids[i]==1){
+                    pbin->grad[i*2+0]+=py->grad[i*vocab+plusId];
+                    pbin->grad[i*2+1]+=py->grad[i*vocab+minusId];
+                }
+            }
+        }
+    };
+    return y;
+}
+
 Tensor matmul(const Tensor& a,const Tensor& b) {
     if(a.n->shape.size()!=2||b.n->shape.size()!=2||a.dim(1)!=b.dim(0)) throw std::runtime_error("matmul shape mismatch");
     int m=a.dim(0),k=a.dim(1),n=b.dim(1);
@@ -393,8 +428,6 @@ public:
         Tensor logits=matmul(zf,P("head.w"));
 
         if(l5control){
-            Tensor cls=linear(zf,"grow3.cls.w","grow3.cls.b");
-
             // Fixed feature extractor, learned decision:
             // compare only ids[1] and ids[2], never the distractor ids[3].
             std::vector<float> relData(ids.size()*d,0.0f);
@@ -409,15 +442,9 @@ public:
             Tensor rel=tensor({static_cast<int>(ids.size()),d},std::move(relData),false);
             Tensor relCls=linear(rel,"grow3.rel.w","grow3.rel.b");
 
-            // At the L5 answer row, classification is isolated from the legacy head:
-            // only the learned relational head may decide +/-. This prevents distractor shortcuts.
-            for(int i=0;i<logits.dim(0);++i){
-                if(i<(int)ids.size() && ids[i]==1){
-                    logits.n->data[i*vocab+0]=-1e9f;
-                    logits.n->data[i*vocab+12]=relCls.n->data[i*2+0];
-                    logits.n->data[i*vocab+13]=relCls.n->data[i*2+1];
-                }
-            }
+            // Differentiable override: unlike the old raw data copy, this preserves
+            // the autograd edge from cross-entropy back to grow3.rel.*.
+            logits=binaryAnswerOverride(logits,relCls,ids,12,13);
         }
 
         bool control=!ids.empty() && (ids[0]==11 || ids[0]==31);
