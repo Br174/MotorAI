@@ -411,8 +411,13 @@ public:
             return 0.10f;
         }
 
-        // L5: preserve the complete Seed010 brain and learn into grow3.
+        // L5: almost all Seed010 remains frozen. Grow3 learns at full speed;
+        // the existing +/- classifier may move only slightly to receive the new relational feature.
         if(g3) return 1.0f;
+        if(z.name=="head.w"){
+            size_t col=i%static_cast<size_t>(vocab);
+            if(col==12 || col==13) return 0.05f;
+        }
         return 0.0f;
     }
     void adamStep(float lr,int batch,int step,int curriculum){
@@ -562,7 +567,9 @@ struct Dataset {
         deterministicShuffle(te,r);
     }
     static void buildEdgeEquality4(uint32_t seed,std::vector<Example>&tr,std::vector<Example>&va,std::vector<Example>&te){
-        std::string symbols="abcdefghijklmnopqrstuvwxyz";
+        // Auto-Training V1 starts on the historical base alphabet a-i.
+        // The same relation will expand to a-z only after this stage is consolidated.
+        std::string symbols="abcdefghi";
         std::vector<std::string> positives,negatives;
 
         // L5: su quattro simboli, classifica se primo == ultimo.
@@ -585,10 +592,10 @@ struct Dataset {
             dst.push_back(encode("?"+q+">"+out+"\n"));
         };
 
-        // Split bilanciato e disgiunto: 800 train, 160 validation, 160 test.
-        for(size_t i=0;i<560;++i){
+        // Split bilanciato e disgiunto: 800 train, 200 validation, 200 test.
+        for(size_t i=0;i<600;++i){
             if(i<400){ append(positives[i],'+',tr); append(negatives[i],'-',tr); }
-            else if(i<480){ append(positives[i],'+',va); append(negatives[i],'-',va); }
+            else if(i<500){ append(positives[i],'+',va); append(negatives[i],'-',va); }
             else { append(positives[i],'+',te); append(negatives[i],'-',te); }
         }
         deterministicShuffle(tr,r);
