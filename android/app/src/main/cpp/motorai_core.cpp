@@ -638,8 +638,8 @@ struct Dataset {
         std::string ends="ab";
         std::string distractors="abcdefghijklmnopqrstuvwxyz";
         std::mt19937 r(seed);
-        std::vector<char> d(distractors.begin(),distractors.end());
-        deterministicShuffle(d,r);
+        std::vector<char> base(distractors.begin(),distractors.end());
+        deterministicShuffle(base,r);
 
         auto append=[&](char a,char b,char x,std::vector<Example>& dst){
             char label=(a==b)?'+':'-';
@@ -648,9 +648,14 @@ struct Dataset {
             dst.push_back(encode("!"+q+">"+out+"\n"));
         };
 
-        // 16 distrattori TRAIN, 5 VALIDATION, 5 TEST per ciascuna delle 4 coppie.
-        // Le classi sono naturalmente bilanciate: aa/bb positivi, ab/ba negativi.
+        // 16 TRAIN, 5 VALIDATION, 5 TEST per coppia.
+        // Lo split è per tripla e resta disgiunto, ma viene ruotato per coppia:
+        // ogni token distrattore compare nel TRAIN di altre coppie, evitando un falso test OOV.
+        int pairIndex=0;
         for(char a:ends) for(char b:ends){
+            std::vector<char> d=base;
+            std::rotate(d.begin(),d.begin()+((pairIndex*7)%26),d.end());
+            ++pairIndex;
             for(int k=0;k<26;++k){
                 if(k<16) append(a,b,d[k],tr);
                 else if(k<21) append(a,b,d[k],va);
