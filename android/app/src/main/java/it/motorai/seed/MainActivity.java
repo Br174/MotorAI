@@ -94,7 +94,7 @@ public class MainActivity extends Activity {
         root.addView(text("MotorAI Seed 011", 28, true));
         root.addView(text("Cervello: Transformer causale nativo C++ · pesi iniziali casuali · nessun modello preaddestrato", 15, false));
         root.addView(text("Curriculum: L0–L4 consolidati → Auto-Training V1 → L5 uguaglianza primo/ultimo", 14, false));
-        root.addView(text("Auto-Training V1: genera gli esercizi, addestra, valida, controlla le memorie, salva checkpoint e fa rollback automaticamente. L5 estende l’uguaglianza strutturale a sequenze di 4 simboli sull’alfabeto base a–i. MotorLab-Training usa un canale neurale dedicato, separato da L4; l’estensione a–z arriverà dopo il consolidamento.", 14, false));
+        root.addView(text("Auto-Training V1: genera gli esercizi, addestra, valida, controlla le memorie, salva checkpoint e fa rollback automaticamente. L5 estende l’uguaglianza strutturale a sequenze di 4 simboli: estremi a–e e distrattori centrali a–i. MotorLab-Training usa un canale neurale dedicato, separato da L4; l’estensione a–z arriverà dopo il consolidamento.", 14, false));
 
         state = text("Stato: inizializzazione…", 16, true);
         curriculum = text("Livello: —", 15, true);
@@ -851,7 +851,7 @@ public class MainActivity extends Activity {
         if (acceptedLevel >= 2) b.append("\n✅ Selezionare e duplicare il primo simbolo");
         if (acceptedLevel >= 3) b.append("\n✅ Selezionare e duplicare il secondo simbolo");
         if (acceptedLevel >= 4) b.append("\n✅ Riconoscere un'uguaglianza strutturale a distanza");
-        if (acceptedLevel >= 5) b.append("\n✅ Riconoscere l'uguaglianza tra primo e ultimo simbolo su 4 posizioni (alfabeto base a–i)");
+        if (acceptedLevel >= 5) b.append("\n✅ Riconoscere l'uguaglianza tra primo e ultimo simbolo su 4 posizioni (primo gradino autonomo)");
         return b.toString();
     }
 
@@ -876,7 +876,7 @@ public class MainActivity extends Activity {
         if (level < 5) {
             learningNow.setText("🔄 Cosa sta imparando: Auto-Training pronto per scegliere il prossimo livello.");
         } else if (!l5Accepted) {
-            learningNow.setText("🔄 Cosa sta imparando: riconoscere la stessa relazione su sequenze di 4 simboli dell’alfabeto base a–i.");
+            learningNow.setText("🔄 Cosa sta imparando: riconoscere la stessa relazione su sequenze di 4 simboli con estremi a–e e distrattori a–i.");
         } else {
             learningNow.setText("🔄 Cosa sta imparando: L5 consolidato; prossimo curriculum in preparazione.");
         }
