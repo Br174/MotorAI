@@ -235,9 +235,13 @@ public class MotorAIBackgroundJobService extends JobService {
 
         int step = after.optInt("step", 0);
         int start = after.optInt("curriculum_start_step", step);
-        appendProgress(String.format(Locale.ITALY,
+        int levelSteps = Math.max(0, step - start);
+        String progress = String.format(Locale.ITALY,
                 "Background L5 · %d passi · validation %.1f%% · memoria min %.1f%%",
-                Math.max(0, step - start), acc * 100.0, min(r) * 100.0));
+                levelSteps, acc * 100.0, min(r) * 100.0);
+        appendProgress(progress);
+        String pointLabel = levelSteps % 100 == 0 ? "L5 · " + levelSteps + " passi" : "";
+        EvolutionHistory.record(this, after, false, pointLabel, progress);
 
         if (stable >= 4) {
             JSONObject fin = new JSONObject(MainActivity.nativeEvaluate());
@@ -247,11 +251,13 @@ public class MotorAIBackgroundJobService extends JobService {
 
             if (finalOk) {
                 rotateAndSave();
+                String finalProgress = String.format(Locale.ITALY,
+                        "L5 consolidato in background · TEST %.1f%%", test * 100.0);
                 evo.edit()
                         .putBoolean("l5_accepted", true)
-                        .putString("last_progress", String.format(Locale.ITALY,
-                                "L5 consolidato in background · TEST %.1f%%", test * 100.0))
+                        .putString("last_progress", finalProgress)
                         .apply();
+                EvolutionHistory.record(this, fin, true, "L5 consolidato", finalProgress);
                 runtime.edit().putInt("l5_stable_passes", 0).apply();
                 sendTelemetry(fin, "background_L5_consolidated");
                 return false;
