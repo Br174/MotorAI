@@ -412,7 +412,7 @@ struct Example {
 };
 
 struct Dataset {
-    std::vector<Example> train,val,test,retention_l0,retention_l1,retention_l2,retention_l3;
+    std::vector<Example> train,val,test,retention_l0,retention_l1,retention_l2,retention_l3,retention_l4;
 
     static int id(char c){
         if(c=='\n')return 0;
@@ -530,22 +530,60 @@ struct Dataset {
         deterministicShuffle(va,r);
         deterministicShuffle(te,r);
     }
+    static void buildEdgeEquality4(uint32_t seed,std::vector<Example>&tr,std::vector<Example>&va,std::vector<Example>&te){
+        std::string symbols="abcdefghijklmnopqrstuvwxyz";
+        std::vector<std::string> positives,negatives;
+
+        // L5: su quattro simboli, classifica se primo == ultimo.
+        for(char a:symbols) for(char b:symbols) for(char c:symbols){
+            std::string p; p+=a; p+=b; p+=c; p+=a;
+            positives.push_back(p);
+
+            char z=symbols[(static_cast<int>(a-'a') + 1 + static_cast<int>((b-'a')+(c-'a'))%25)%26];
+            if(z==a) z=symbols[(static_cast<int>(a-'a')+1)%26];
+            std::string n; n+=a; n+=b; n+=c; n+=z;
+            negatives.push_back(n);
+        }
+
+        std::mt19937 r(seed);
+        deterministicShuffle(positives,r);
+        deterministicShuffle(negatives,r);
+
+        auto append=[&](const std::string& q,char label,std::vector<Example>& dst){
+            std::string out(1,label);
+            dst.push_back(encode("?"+q+">"+out+"\n"));
+        };
+
+        // Split bilanciato e disgiunto: 800 train, 160 validation, 160 test.
+        for(size_t i=0;i<560;++i){
+            if(i<400){ append(positives[i],'+',tr); append(negatives[i],'-',tr); }
+            else if(i<480){ append(positives[i],'+',va); append(negatives[i],'-',va); }
+            else { append(positives[i],'+',te); append(negatives[i],'-',te); }
+        }
+        deterministicShuffle(tr,r);
+        deterministicShuffle(va,r);
+        deterministicShuffle(te,r);
+    }
+
     explicit Dataset(uint32_t seed,int level=0){
         std::vector<Example> l0tr,l0va,l0te;
         std::vector<Example> l1tr,l1va,l1te;
         std::vector<Example> l2tr,l2va,l2te;
         std::vector<Example> l3tr,l3va,l3te;
         std::vector<Example> l4tr,l4va,l4te;
+        std::vector<Example> l5tr,l5va,l5te;
         buildCopy3(seed,l0tr,l0va,l0te);
         buildPairs(seed+1009,1,l1tr,l1va,l1te);
         buildPairs(seed+2027,2,l2tr,l2va,l2te);
         buildPairs(seed+3037,3,l3tr,l3va,l3te);
         buildMarkedCompare(seed+4051,l4tr,l4va,l4te);
+        buildEdgeEquality4(seed+5099,l5tr,l5va,l5te);
 
         retention_l0=l0te;
         retention_l1=l1te;
         retention_l2=l2te;
         retention_l3=l3te;
+        retention_l4=l4te;
 
         if(level<=0){
             train=std::move(l0tr); val=std::move(l0va); test=std::move(l0te);
@@ -578,9 +616,20 @@ struct Dataset {
             return;
         }
 
-        // Livello 4: token comando "?" + classificazione strutturale (+=primo==terzo, -=diverso).
-        // Layout: L4(72), L3(48), L2(48), L1(48), L0(72).
-        train=l4tr; val=l4va; test=l4te;
+        if(level==4){
+            // Livello 4: uguaglianza strutturale a distanza 2.
+            train=l4tr; val=l4va; test=l4te;
+            for(size_t i=0;i<48 && i<l3tr.size();++i) train.push_back(l3tr[i]);
+            for(size_t i=0;i<48 && i<l2tr.size();++i) train.push_back(l2tr[i]);
+            for(size_t i=0;i<48 && i<l1tr.size();++i) train.push_back(l1tr[i]);
+            for(size_t i=0;i<72 && i<l0tr.size();++i) train.push_back(l0tr[i]);
+            return;
+        }
+
+        // Livello 5: Auto-Training V1. Uguaglianza strutturale primo/ultimo su 4 simboli.
+        // Segmenti: L5=800, L4=160, L3=48, L2=48, L1=48, L0=72.
+        train=l5tr; val=l5va; test=l5te;
+        for(size_t i=0;i<160 && i<l4tr.size();++i) train.push_back(l4tr[i]);
         for(size_t i=0;i<48 && i<l3tr.size();++i) train.push_back(l3tr[i]);
         for(size_t i=0;i<48 && i<l2tr.size();++i) train.push_back(l2tr[i]);
         for(size_t i=0;i<48 && i<l1tr.size();++i) train.push_back(l1tr[i]);
@@ -624,9 +673,10 @@ Metrics Engine::evaluateRetentionL0(){ std::lock_guard<std::mutex> g(impl_->mu);
 Metrics Engine::evaluateRetentionL1(){ std::lock_guard<std::mutex> g(impl_->mu); return eval(impl_->model,impl_->data.retention_l1); }
 Metrics Engine::evaluateRetentionL2(){ std::lock_guard<std::mutex> g(impl_->mu); return eval(impl_->model,impl_->data.retention_l2); }
 Metrics Engine::evaluateRetentionL3(){ std::lock_guard<std::mutex> g(impl_->mu); return eval(impl_->model,impl_->data.retention_l3); }
+Metrics Engine::evaluateRetentionL4(){ std::lock_guard<std::mutex> g(impl_->mu); return eval(impl_->model,impl_->data.retention_l4); }
 int Engine::parameterCount() const{return impl_->model.parameterCount();}
 int Engine::globalStep() const{return impl_->step;}
-void Engine::setCurriculum(int level){ std::lock_guard<std::mutex> g(impl_->mu); level=std::max(0,std::min(4,level)); if(impl_->curriculum==level)return; impl_->curriculum=level; impl_->curriculum_start_step=impl_->step; impl_->model.resetOptimizerMoments(); impl_->data=Dataset(impl_->seed,level); }
+void Engine::setCurriculum(int level){ std::lock_guard<std::mutex> g(impl_->mu); level=std::max(0,std::min(5,level)); if(impl_->curriculum==level)return; impl_->curriculum=level; impl_->curriculum_start_step=impl_->step; impl_->model.resetOptimizerMoments(); impl_->data=Dataset(impl_->seed,level); }
 int Engine::curriculumLevel() const{ std::lock_guard<std::mutex> g(impl_->mu); return impl_->curriculum; }
 int Engine::curriculumStartStep() const{ std::lock_guard<std::mutex> g(impl_->mu); return impl_->curriculum_start_step; }
 void Engine::requestPause(){impl_->pause.store(true);} void Engine::clearPause(){impl_->pause.store(false);}
@@ -660,14 +710,21 @@ TrainResult Engine::train(int steps,int batch,float lr){
                 else if(b < 16) idx=72+deterministicIndex(r,48);
                 else if(b < 20) idx=120+deterministicIndex(r,48);
                 else idx=168+deterministicIndex(r,72);
-            }else if(impl_->curriculum>=4 && impl_->data.train.size()>=1308){
+            }else if(impl_->curriculum==4 && impl_->data.train.size()>=1308){
                 // L4 50%; replay L3/L2/L1/L0 12.5% ciascuno.
-                // Segmenti: L4=1092, L3=48, L2=48, L1=48, L0=72.
                 if(b < 12) idx=deterministicIndex(r,1092);
                 else if(b < 15) idx=1092+deterministicIndex(r,48);
                 else if(b < 18) idx=1140+deterministicIndex(r,48);
                 else if(b < 21) idx=1188+deterministicIndex(r,48);
                 else idx=1236+deterministicIndex(r,72);
+            }else if(impl_->curriculum>=5 && impl_->data.train.size()>=1176){
+                // Auto-Training L5: 50% nuovo livello, 16.7% L4, 8.3% per L3/L2/L1/L0.
+                if(b < 12) idx=deterministicIndex(r,800);
+                else if(b < 16) idx=800+deterministicIndex(r,160);
+                else if(b < 18) idx=960+deterministicIndex(r,48);
+                else if(b < 20) idx=1008+deterministicIndex(r,48);
+                else if(b < 22) idx=1056+deterministicIndex(r,48);
+                else idx=1104+deterministicIndex(r,72);
             }else{
                 idx=deterministicIndex(r,impl_->data.train.size());
             }
@@ -694,6 +751,7 @@ TrainResult Engine::train(int steps,int batch,float lr){
     tr.retention_l1=eval(impl_->model,impl_->data.retention_l1);
     tr.retention_l2=eval(impl_->model,impl_->data.retention_l2);
     tr.retention_l3=eval(impl_->model,impl_->data.retention_l3);
+    tr.retention_l4=eval(impl_->model,impl_->data.retention_l4);
     tr.elapsed_seconds=std::chrono::duration<double>(t1-t0).count();
     tr.paused=impl_->pause.load();
     return tr;
@@ -712,8 +770,8 @@ bool Engine::saveCheckpoint(const std::string&dir) const{
     try{
         std::filesystem::create_directories(dir);
         std::ofstream w(dir+"/weights.bin",std::ios::binary); if(!w)return false;
-        const char magic[8]={'M','O','T','A','I','0','1','0'}; w.write(magic,8);
-        uint32_t ver=4,seed=impl_->seed,step=impl_->step,level=impl_->curriculum,start_step=impl_->curriculum_start_step,pc=impl_->model.p.size();
+        const char magic[8]={'M','O','T','A','I','0','1','1'}; w.write(magic,8);
+        uint32_t ver=5,seed=impl_->seed,step=impl_->step,level=impl_->curriculum,start_step=impl_->curriculum_start_step,pc=impl_->model.p.size();
         w.write((char*)&ver,4); w.write((char*)&seed,4); w.write((char*)&step,4); w.write((char*)&level,4); w.write((char*)&start_step,4); w.write((char*)&pc,4);
         for(auto&z:impl_->model.p){
             uint32_t nl=z.name.size(),sz=z.value.n->data.size();
@@ -727,6 +785,7 @@ bool Engine::saveCheckpoint(const std::string&dir) const{
         Metrics r1=eval(const_cast<TinyTransformer&>(impl_->model),impl_->data.retention_l1);
         Metrics r2=eval(const_cast<TinyTransformer&>(impl_->model),impl_->data.retention_l2);
         Metrics r3=eval(const_cast<TinyTransformer&>(impl_->model),impl_->data.retention_l3);
+        Metrics r4=eval(const_cast<TinyTransformer&>(impl_->model),impl_->data.retention_l4);
         std::ofstream j(dir+"/checkpoint.json");
         j<<"{\n  \"format\": \"MOTORAI_CHECKPOINT_NATIVE_V2\",\n  \"seed\": "<<impl_->seed
          <<",\n  \"global_step\": "<<impl_->step<<",\n  \"curriculum_level\": "<<impl_->curriculum
@@ -736,6 +795,7 @@ bool Engine::saveCheckpoint(const std::string&dir) const{
          <<",\n  \"retention_l1_accuracy\": "<<r1.answer_accuracy
          <<",\n  \"retention_l2_accuracy\": "<<r2.answer_accuracy
          <<",\n  \"retention_l3_accuracy\": "<<r3.answer_accuracy
+         <<",\n  \"retention_l4_accuracy\": "<<r4.answer_accuracy
          <<",\n  \"pretrained_model\": false,\n  \"weights_origin\": \"random_then_local_training\"\n}\n";
         return (bool)j;
     }catch(...){return false;}
@@ -761,6 +821,9 @@ bool Engine::loadCheckpoint(const std::string&dir){
         }else if(m=="MOTAI010"){
             w.read((char*)&ver,4); w.read((char*)&seed,4); w.read((char*)&step,4); w.read((char*)&level,4); w.read((char*)&start_step,4); w.read((char*)&pc,4);
             if(ver!=4 || level>4 || start_step>step) return false;
+        }else if(m=="MOTAI011"){
+            w.read((char*)&ver,4); w.read((char*)&seed,4); w.read((char*)&step,4); w.read((char*)&level,4); w.read((char*)&start_step,4); w.read((char*)&pc,4);
+            if(ver!=5 || level>5 || start_step>step) return false;
         }else return false;
 
         // Migrazione per vocabolario 11 -> 12: carica per nome e conserva il nuovo token ? inizializzato localmente.
@@ -800,11 +863,11 @@ bool Engine::loadCheckpoint(const std::string&dir){
 
 std::string Engine::statusJson() const{
     std::lock_guard<std::mutex> guard(impl_->mu);
-    Metrics te=eval(impl_->model,impl_->data.test), r0=eval(impl_->model,impl_->data.retention_l0), r1=eval(impl_->model,impl_->data.retention_l1), r2=eval(impl_->model,impl_->data.retention_l2), r3=eval(impl_->model,impl_->data.retention_l3);
+    Metrics te=eval(impl_->model,impl_->data.test), r0=eval(impl_->model,impl_->data.retention_l0), r1=eval(impl_->model,impl_->data.retention_l1), r2=eval(impl_->model,impl_->data.retention_l2), r3=eval(impl_->model,impl_->data.retention_l3), r4=eval(impl_->model,impl_->data.retention_l4);
     std::ostringstream s; s<<std::fixed<<std::setprecision(4)
       <<"{\"seed\":"<<impl_->seed<<",\"step\":"<<impl_->step<<",\"curriculum\":"<<impl_->curriculum<<",\"curriculum_start_step\":"<<impl_->curriculum_start_step
       <<",\"parameters\":"<<parameterCount()<<",\"test_loss\":"<<te.loss<<",\"test_accuracy\":"<<te.answer_accuracy
-      <<",\"retention_l0_accuracy\":"<<r0.answer_accuracy<<",\"retention_l1_accuracy\":"<<r1.answer_accuracy<<",\"retention_l2_accuracy\":"<<r2.answer_accuracy<<",\"retention_l3_accuracy\":"<<r3.answer_accuracy<<",\"pretrained\":false}";
+      <<",\"retention_l0_accuracy\":"<<r0.answer_accuracy<<",\"retention_l1_accuracy\":"<<r1.answer_accuracy<<",\"retention_l2_accuracy\":"<<r2.answer_accuracy<<",\"retention_l3_accuracy\":"<<r3.answer_accuracy<<",\"retention_l4_accuracy\":"<<r4.answer_accuracy<<",\"pretrained\":false}";
     return s.str();
 }
 
