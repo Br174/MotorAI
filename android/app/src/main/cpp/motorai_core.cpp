@@ -632,10 +632,14 @@ struct Dataset {
         deterministicShuffle(te,r);
     }
     static void buildAdjacentEquality3(uint32_t seed,std::vector<Example>&tr,std::vector<Example>&va,std::vector<Example>&te){
-        // Auto-Training V1: relazione tra i primi due simboli, terzo simbolo come distrattore.
-        // Ogni coppia a-i compare in TRAIN/VAL/TEST ma con distrattori disgiunti.
-        std::string symbols="abcdefghi";
+        // Auto-Training V1, gradino A:
+        // confronta i primi due simboli (a/b); il terzo è un distrattore a-z.
+        // TRAIN, VALIDATION e TEST usano distrattori disgiunti.
+        std::string ends="ab";
+        std::string distractors="abcdefghijklmnopqrstuvwxyz";
         std::mt19937 r(seed);
+        std::vector<char> d(distractors.begin(),distractors.end());
+        deterministicShuffle(d,r);
 
         auto append=[&](char a,char b,char x,std::vector<Example>& dst){
             char label=(a==b)?'+':'-';
@@ -644,28 +648,15 @@ struct Dataset {
             dst.push_back(encode("!"+q+">"+out+"\n"));
         };
 
-        for(char a:symbols) for(char b:symbols){
-            std::vector<char> distractors(symbols.begin(),symbols.end());
-            // Rotazione deterministica diversa per coppia, poi shuffle con il seed del curriculum.
-            std::rotate(distractors.begin(),
-                        distractors.begin()+((a-'a')*3+(b-'a'))%distractors.size(),
-                        distractors.end());
-            deterministicShuffle(distractors,r);
-
-            for(int k=0;k<9;++k){
-                if(k<5) append(a,b,distractors[k],tr);
-                else if(k<7) append(a,b,distractors[k],va);
-                else append(a,b,distractors[k],te);
+        // 16 distrattori TRAIN, 5 VALIDATION, 5 TEST per ciascuna delle 4 coppie.
+        // Le classi sono naturalmente bilanciate: aa/bb positivi, ab/ba negativi.
+        for(char a:ends) for(char b:ends){
+            for(int k=0;k<26;++k){
+                if(k<16) append(a,b,d[k],tr);
+                else if(k<21) append(a,b,d[k],va);
+                else append(a,b,d[k],te);
             }
         }
-
-        // Bilancia il TRAIN: 45 positivi base contro 360 negativi.
-        // Duplichiamo solo i positivi nel TRAIN; validation/test restano intatti e indipendenti.
-        std::vector<Example> positives;
-        for(const auto& e:tr) if(e.raw.find(">+")!=std::string::npos) positives.push_back(e);
-        for(int repeat=0;repeat<7;++repeat)
-            for(const auto& e:positives) tr.push_back(e);
-
         deterministicShuffle(tr,r);
         deterministicShuffle(va,r);
         deterministicShuffle(te,r);
@@ -732,8 +723,8 @@ struct Dataset {
             return;
         }
 
-        // Livello 5: Auto-Training V1. Uguaglianza adiacente con distrattori mai visti.
-        // Segmenti: L5=720, L4=160, L3=48, L2=48, L1=48, L0=72.
+        // Livello 5: Auto-Training V1 gradino A. Uguaglianza adiacente a/b con distrattori a-z.
+        // Segmenti: L5=64, L4=160, L3=48, L2=48, L1=48, L0=72.
         train=l5tr; val=l5va; test=l5te;
         for(size_t i=0;i<160 && i<l4tr.size();++i) train.push_back(l4tr[i]);
         for(size_t i=0;i<48 && i<l3tr.size();++i) train.push_back(l3tr[i]);
@@ -802,7 +793,7 @@ TrainResult Engine::train(int steps,int batch,float lr){
     auto t0=std::chrono::steady_clock::now();
     std::mt19937 r(impl_->seed+1+impl_->step);
     int done=0;
-    float effective_lr=(impl_->curriculum>=5)?lr*2.0f:((impl_->curriculum>=4)?lr:((impl_->curriculum>=3)?lr*0.65f:((impl_->curriculum>=2)?lr*0.75f:lr)));
+    float effective_lr=(impl_->curriculum>=5)?lr:((impl_->curriculum>=4)?lr:((impl_->curriculum>=3)?lr*0.65f:((impl_->curriculum>=2)?lr*0.75f:lr)));
 
     for(int s=0;s<steps;++s){
         if(impl_->pause.load()) break;
@@ -832,9 +823,9 @@ TrainResult Engine::train(int steps,int batch,float lr){
                 else if(b < 18) idx=1140+deterministicIndex(r,48);
                 else if(b < 21) idx=1188+deterministicIndex(r,48);
                 else idx=1236+deterministicIndex(r,72);
-            }else if(impl_->curriculum>=5 && impl_->data.train.size()>=1096){
+            }else if(impl_->curriculum>=5 && impl_->data.train.size()>=440){
                 // L5 modular and isolated: 100% new-task batches.
-                idx=deterministicIndex(r,720);
+                idx=deterministicIndex(r,64);
             }else{
                 idx=deterministicIndex(r,impl_->data.train.size());
             }
