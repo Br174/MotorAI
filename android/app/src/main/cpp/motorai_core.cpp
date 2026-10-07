@@ -1029,6 +1029,311 @@ public:
     }
 };
 
+
+struct Goal2Example {
+    int intent = 0;
+    std::string response;
+};
+
+struct Goal2Dataset {
+    std::vector<Goal2Example> train, val, test;
+
+    static void add(std::vector<Goal2Example>& dst,int intent,std::initializer_list<const char*> values){
+        for(const char* s:values) dst.push_back({intent,s});
+    }
+
+    explicit Goal2Dataset(uint32_t seed){
+        // Obiettivo 2: brevi risposte naturali pertinenti al tipo di richiesta.
+        // Le stringhe TEST sono diverse da TRAIN/VALIDATION.
+        add(train,0,{
+            "ciao come posso aiutarti","ciao dimmi pure","salve come posso aiutarti",
+            "ciao sono qui per aiutarti","salve dimmi pure","ciao cosa vuoi sapere",
+            "salve sono qui","ciao posso aiutarti","salve posso aiutarti",
+            "ciao dimmi cosa ti serve","salve dimmi cosa ti serve","ciao sono qui"
+        });
+        add(val,0,{
+            "ciao dimmi come posso aiutarti","salve posso aiutarti","ciao sono qui",
+            "salve cosa vuoi sapere"
+        });
+        add(test,0,{
+            "ciao posso aiutarti","salve dimmi pure","ciao cosa vuoi sapere",
+            "salve sono qui per aiutarti"
+        });
+
+        add(train,1,{
+            "posso provare a spiegartelo","dimmi cosa vuoi sapere",
+            "provero a darti una risposta chiara","posso aiutarti con questa domanda",
+            "cerchero di spiegartelo in modo semplice","posso darti una risposta semplice",
+            "dimmi pure cosa vuoi sapere","provero a rispondere in modo chiaro",
+            "posso spiegartelo con parole semplici","provero a chiarire la domanda",
+            "posso aiutarti a capire","dimmi la domanda e provo a rispondere"
+        });
+        add(val,1,{
+            "posso provare a rispondere","dimmi cosa vuoi sapere",
+            "provero a spiegartelo in modo chiaro","posso aiutarti a capire"
+        });
+        add(test,1,{
+            "posso darti una risposta chiara","provero a spiegartelo",
+            "dimmi la domanda e provo a rispondere","posso spiegartelo in modo semplice"
+        });
+
+        add(train,2,{
+            "posso aiutarti con il calcolo","provero a calcolarlo",
+            "dimmi i numeri e provo a calcolare","posso fare il calcolo",
+            "provero a trovare il risultato","posso calcolare il risultato",
+            "dimmi il calcolo e provo a rispondere","posso aiutarti a calcolare",
+            "provero a fare questo calcolo","posso trovare il risultato",
+            "dimmi i numeri da calcolare","provero a calcolare il risultato"
+        });
+        add(val,2,{
+            "posso provare a calcolare","dimmi il calcolo",
+            "provero a trovare il risultato","posso aiutarti con questo calcolo"
+        });
+        add(test,2,{
+            "posso calcolare il risultato","provero a fare il calcolo",
+            "dimmi i numeri e provo a calcolare","posso aiutarti a calcolare"
+        });
+
+        add(train,3,{
+            "posso cercare informazioni utili","provero a trovare quello che cerchi",
+            "posso fare una ricerca","cerchero informazioni per te",
+            "provero a cercare sul web","posso trovare informazioni",
+            "dimmi cosa devo cercare","posso provare a fare una ricerca",
+            "cerchero quello che ti serve","provero a trovare informazioni",
+            "posso cercare quello che chiedi","dimmi cosa vuoi cercare"
+        });
+        add(val,3,{
+            "posso provare a cercare","provero a trovare informazioni",
+            "dimmi cosa vuoi cercare","posso fare una ricerca"
+        });
+        add(test,3,{
+            "posso cercare informazioni","provero a trovare quello che cerchi",
+            "dimmi cosa devo cercare","posso provare a fare una ricerca"
+        });
+
+        add(train,4,{
+            "posso provare a farlo","dimmi i dettagli e provo ad aiutarti",
+            "posso eseguire questa azione","provero a fare quello che chiedi",
+            "posso aiutarti con questa azione","dimmi cosa devo fare",
+            "provero a eseguire il compito","posso provare questa azione",
+            "dimmi i dettagli dell azione","provero ad aiutarti a farlo",
+            "posso fare questo compito","dimmi cosa vuoi che faccia"
+        });
+        add(val,4,{
+            "posso provare a eseguire l azione","dimmi cosa devo fare",
+            "provero a fare il compito","posso aiutarti a farlo"
+        });
+        add(test,4,{
+            "posso eseguire questa azione","provero a fare quello che chiedi",
+            "dimmi i dettagli e provo ad aiutarti","posso fare questo compito"
+        });
+
+        std::mt19937 r(seed ^ 0x6202BEEFu);
+        deterministicShuffle(train,r);
+        deterministicShuffle(val,r);
+        deterministicShuffle(test,r);
+    }
+};
+
+class Goal2ResponseBrain {
+public:
+    static constexpr int INTENTS=5;
+    static constexpr int CONTEXTS=4096;
+    static constexpr int BOS=0;
+    static constexpr int EOS=1;
+    static constexpr int UNK=2;
+
+    uint32_t seed=174;
+    int step=0;
+    std::vector<float> w;
+
+    static const std::vector<std::string>& vocab(){
+        static const std::vector<std::string> v={
+            "<bos>","<eos>","<unk>",
+            "ciao","come","posso","aiutarti","dimmi","pure","salve","sono","qui","per",
+            "cosa","vuoi","sapere","ti","serve","provare","a","spiegartelo","provero",
+            "darti","una","risposta","chiara","con","questa","domanda","cerchero","di",
+            "in","modo","semplice","parole","chiarire","la","capire","il","calcolo",
+            "calcolarlo","i","numeri","e","calcolare","fare","trovare","risultato",
+            "questo","da","utili","quello","che","cerchi","ricerca","informazioni",
+            "te","sul","web","devo","cercare","chiedi","farlo","dettagli","provo",
+            "ad","eseguire","azione","compito","dell","faccia",
+            "chiaro","l","rispondere","semplici"
+        };
+        return v;
+    }
+
+    static int V(){ return static_cast<int>(vocab().size()); }
+
+    explicit Goal2ResponseBrain(uint32_t s=174)
+        :seed(s),w(CONTEXTS*V(),0.0f){
+        std::mt19937 r(seed ^ 0x62020013u);
+        for(float& x:w) x=0.0015f*deterministicNormalApprox(r);
+    }
+
+    int parameterCount() const { return static_cast<int>(w.size()); }
+
+    static int wordId(const std::string& word){
+        const auto& v=vocab();
+        for(size_t i=3;i<v.size();++i) if(v[i]==word) return static_cast<int>(i);
+        return UNK;
+    }
+
+    static std::vector<int> encodeWords(const std::string& raw){
+        std::string s=normalizeItalian(raw);
+        std::istringstream in(s);
+        std::vector<int> ids;
+        std::string word;
+        while(in>>word) ids.push_back(wordId(word));
+        ids.push_back(EOS);
+        return ids;
+    }
+
+    static size_t context(int intent,int p2,int p1){
+        uint32_t x=2166136261u;
+        auto mix=[&](uint32_t v){ x^=v+0x9e3779b9u+(x<<6)+(x>>2); x*=16777619u; };
+        mix(static_cast<uint32_t>(intent+1));
+        mix(static_cast<uint32_t>(p2+3));
+        mix(static_cast<uint32_t>(p1+7));
+        return static_cast<size_t>(x%CONTEXTS);
+    }
+
+    size_t base(int intent,int p2,int p1) const {
+        return context(intent,p2,p1)*V();
+    }
+
+    Metrics evaluate(const std::vector<Goal2Example>& set) const {
+        if(set.empty()) return {};
+        double loss=0.0;
+        long correct=0,total=0;
+        const int vocabSize=V();
+
+        for(const auto& e:set){
+            int p2=BOS,p1=BOS;
+            auto ys=encodeWords(e.response);
+            for(int y:ys){
+                size_t off=base(e.intent,p2,p1);
+                float mx=-std::numeric_limits<float>::infinity();
+                for(int k=1;k<vocabSize;++k) mx=std::max(mx,w[off+k]);
+                double sum=0.0;
+                int best=EOS;
+                float bestv=-std::numeric_limits<float>::infinity();
+                for(int k=1;k<vocabSize;++k){
+                    sum+=std::exp(double(w[off+k]-mx));
+                    if(w[off+k]>bestv){bestv=w[off+k];best=k;}
+                }
+                loss-=double(w[off+y])-mx-std::log(sum);
+                if(best==y) ++correct;
+                ++total;
+                p2=p1; p1=y;
+            }
+        }
+
+        return {static_cast<float>(loss/std::max<long>(1,total)),
+                total?static_cast<float>(correct)/total:0.0f};
+    }
+
+    Goal2TrainResult train(const Goal2Dataset& data,int steps,int batch,float lr){
+        auto t0=std::chrono::steady_clock::now();
+        const int vocabSize=V();
+        int done=0;
+
+        for(int s=0;s<steps;++s){
+            std::mt19937 r(seed ^ 0x6202CAFEu ^ static_cast<uint32_t>(step+1));
+            std::vector<float> gw(w.size(),0.0f);
+            std::vector<size_t> touched;
+            std::vector<uint8_t> seen(CONTEXTS,0);
+            long tokens=0;
+
+            for(int n=0;n<batch;++n){
+                const auto& e=data.train[deterministicIndex(r,data.train.size())];
+                int p2=BOS,p1=BOS;
+                auto ys=encodeWords(e.response);
+
+                for(int y:ys){
+                    size_t ctx=context(e.intent,p2,p1);
+                    size_t off=ctx*vocabSize;
+                    if(!seen[ctx]){seen[ctx]=1;touched.push_back(ctx);}
+
+                    float mx=-std::numeric_limits<float>::infinity();
+                    for(int k=1;k<vocabSize;++k) mx=std::max(mx,w[off+k]);
+                    double sum=0.0;
+                    std::vector<float> probs(vocabSize,0.0f);
+                    for(int k=1;k<vocabSize;++k){
+                        probs[k]=std::exp(w[off+k]-mx);
+                        sum+=probs[k];
+                    }
+                    for(int k=1;k<vocabSize;++k){
+                        float g=static_cast<float>(probs[k]/sum)-(k==y?1.0f:0.0f);
+                        gw[off+k]+=g;
+                    }
+                    ++tokens;
+                    p2=p1; p1=y;
+                }
+            }
+
+            float rate=lr/std::max<long>(1,tokens);
+            for(size_t ctx:touched){
+                size_t off=ctx*vocabSize;
+                for(int k=1;k<vocabSize;++k){
+                    if(gw[off+k]!=0.0f) w[off+k]-=rate*(gw[off+k]+0.00005f*w[off+k]);
+                }
+            }
+            ++step; ++done;
+        }
+
+        auto t1=std::chrono::steady_clock::now();
+        Goal2TrainResult out;
+        out.steps_completed=done;
+        out.train=evaluate(data.train);
+        out.validation=evaluate(data.val);
+        out.elapsed_seconds=std::chrono::duration<double>(t1-t0).count();
+        return out;
+    }
+
+    std::string generate(int intent,int maxWords=18) const {
+        intent=std::max(0,std::min(INTENTS-1,intent));
+        const int vocabSize=V();
+        int p2=BOS,p1=BOS;
+        std::vector<int> out;
+        std::unordered_set<uint64_t> usedPairs;
+
+        for(int n=0;n<maxWords;++n){
+            size_t off=base(intent,p2,p1);
+            std::vector<std::pair<float,int>> choices;
+            choices.reserve(vocabSize-1);
+            for(int k=1;k<vocabSize;++k) choices.push_back({w[off+k],k});
+            std::sort(choices.begin(),choices.end(),
+                      [](const auto&a,const auto&b){return a.first>b.first;});
+
+            int chosen=EOS;
+            for(const auto& choice:choices){
+                int token=choice.second;
+                if(token==UNK) continue;
+                if(token==EOS && out.size()<2) continue;
+                if(token==EOS){chosen=EOS;break;}
+
+                uint64_t pair=(static_cast<uint64_t>(p1)<<32)|static_cast<uint32_t>(token);
+                if(usedPairs.count(pair)) continue;
+                chosen=token;
+                break;
+            }
+
+            if(chosen==EOS) break;
+            usedPairs.insert((static_cast<uint64_t>(p1)<<32)|static_cast<uint32_t>(chosen));
+            out.push_back(chosen);
+            p2=p1; p1=chosen;
+        }
+
+        std::ostringstream s;
+        for(size_t i=0;i<out.size();++i){
+            if(i) s<<" ";
+            s<<vocab()[out[i]];
+        }
+        return s.str();
+    }
+};
+
 Metrics eval(TinyTransformer&m,const std::vector<Example>&set){
     if(set.empty()) return {};
     double loss=0; int correct=0,total=0;
@@ -1059,10 +1364,13 @@ public:
     int step=0;
     Goal1IntentBrain goal1;
     Goal1Dataset goal1data;
+    Goal2ResponseBrain goal2;
+    Goal2Dataset goal2data;
     std::atomic<bool> pause{false};
     mutable std::mutex mu;
     explicit Impl(uint32_t s)
-        :seed(s),model(s),curriculum(0),curriculum_start_step(0),data(s,0),goal1(s),goal1data(s){}
+        :seed(s),model(s),curriculum(0),curriculum_start_step(0),data(s,0),
+         goal1(s),goal1data(s),goal2(s),goal2data(s){}
 };
 
 Engine::Engine(uint32_t seed):impl_(std::make_unique<Impl>(seed)){}
@@ -1107,6 +1415,25 @@ std::string Engine::classifyGoal1(const std::string& text) const {
     std::ostringstream s;
     s<<std::fixed<<std::setprecision(4)
      <<"{\"intent\":\""<<Goal1IntentBrain::labelName(label)<<"\",\"confidence\":"<<confidence<<"}";
+    return s.str();
+}
+
+Metrics Engine::evaluateGoal2Train(){ std::lock_guard<std::mutex> g(impl_->mu); return impl_->goal2.evaluate(impl_->goal2data.train); }
+Metrics Engine::evaluateGoal2Validation(){ std::lock_guard<std::mutex> g(impl_->mu); return impl_->goal2.evaluate(impl_->goal2data.val); }
+Metrics Engine::evaluateGoal2Test(){ std::lock_guard<std::mutex> g(impl_->mu); return impl_->goal2.evaluate(impl_->goal2data.test); }
+Goal2TrainResult Engine::trainGoal2(int steps,int batch,float lr){
+    std::lock_guard<std::mutex> g(impl_->mu);
+    return impl_->goal2.train(impl_->goal2data,steps,batch,lr);
+}
+int Engine::goal2Step() const { std::lock_guard<std::mutex> g(impl_->mu); return impl_->goal2.step; }
+int Engine::goal2ParameterCount() const { std::lock_guard<std::mutex> g(impl_->mu); return impl_->goal2.parameterCount(); }
+std::string Engine::respondGoal2(const std::string& text) const {
+    std::lock_guard<std::mutex> g(impl_->mu);
+    int intent=impl_->goal1.predict(text,nullptr);
+    std::string reply=impl_->goal2.generate(intent);
+    std::ostringstream s;
+    s<<"{\"intent\":\""<<Goal1IntentBrain::labelName(intent)
+     <<"\",\"reply\":\""<<esc(reply)<<"\"}";
     return s.str();
 }
 
@@ -1196,8 +1523,8 @@ bool Engine::saveCheckpoint(const std::string&dir) const{
     try{
         std::filesystem::create_directories(dir);
         std::ofstream w(dir+"/weights.bin",std::ios::binary); if(!w)return false;
-        const char magic[8]={'M','O','T','A','I','0','1','2'}; w.write(magic,8);
-        uint32_t ver=6,seed=impl_->seed,step=impl_->step,level=impl_->curriculum,start_step=impl_->curriculum_start_step,pc=impl_->model.p.size();
+        const char magic[8]={'M','O','T','A','I','0','1','3'}; w.write(magic,8);
+        uint32_t ver=7,seed=impl_->seed,step=impl_->step,level=impl_->curriculum,start_step=impl_->curriculum_start_step,pc=impl_->model.p.size();
         w.write((char*)&ver,4); w.write((char*)&seed,4); w.write((char*)&step,4); w.write((char*)&level,4); w.write((char*)&start_step,4); w.write((char*)&pc,4);
         for(auto&z:impl_->model.p){
             uint32_t nl=z.name.size(),sz=z.value.n->data.size();
@@ -1211,6 +1538,10 @@ bool Engine::saveCheckpoint(const std::string&dir) const{
         w.write((char*)&goal1_step,4); w.write((char*)&goal1_w,4); w.write((char*)&goal1_b,4);
         w.write((char*)impl_->goal1.w.data(),goal1_w*sizeof(float));
         w.write((char*)impl_->goal1.b.data(),goal1_b*sizeof(float));
+        uint32_t goal2_step=static_cast<uint32_t>(impl_->goal2.step);
+        uint32_t goal2_w=static_cast<uint32_t>(impl_->goal2.w.size());
+        w.write((char*)&goal2_step,4); w.write((char*)&goal2_w,4);
+        w.write((char*)impl_->goal2.w.data(),goal2_w*sizeof(float));
         w.close();
         Metrics va=eval(const_cast<TinyTransformer&>(impl_->model),impl_->data.val);
         Metrics r0=eval(const_cast<TinyTransformer&>(impl_->model),impl_->data.retention_l0);
@@ -1230,6 +1561,8 @@ bool Engine::saveCheckpoint(const std::string&dir) const{
          <<",\n  \"retention_l4_accuracy\": "<<r4.answer_accuracy
          <<",\n  \"goal1_step\": "<<impl_->goal1.step
          <<",\n  \"goal1_validation_accuracy\": "<<impl_->goal1.evaluate(impl_->goal1data.val).answer_accuracy
+         <<",\n  \"goal2_step\": "<<impl_->goal2.step
+         <<",\n  \"goal2_validation_accuracy\": "<<impl_->goal2.evaluate(impl_->goal2data.val).answer_accuracy
          <<",\n  \"pretrained_model\": false,\n  \"weights_origin\": \"random_then_local_training\"\n}\n";
         return (bool)j;
     }catch(...){return false;}
@@ -1261,6 +1594,9 @@ bool Engine::loadCheckpoint(const std::string&dir){
         }else if(m=="MOTAI012"){
             w.read((char*)&ver,4); w.read((char*)&seed,4); w.read((char*)&step,4); w.read((char*)&level,4); w.read((char*)&start_step,4); w.read((char*)&pc,4);
             if(ver!=6 || level>5 || start_step>step) return false;
+        }else if(m=="MOTAI013"){
+            w.read((char*)&ver,4); w.read((char*)&seed,4); w.read((char*)&step,4); w.read((char*)&level,4); w.read((char*)&start_step,4); w.read((char*)&pc,4);
+            if(ver!=7 || level>5 || start_step>step) return false;
         }else return false;
 
         // Migrazione per vocabolario 11 -> 12: carica per nome e conserva il nuovo token ? inizializzato localmente.
@@ -1303,6 +1639,15 @@ bool Engine::loadCheckpoint(const std::string&dir){
             if(!w) return false;
             loadedGoal.step=static_cast<int>(goal1_step);
         }
+        Goal2ResponseBrain loadedGoal2(seed);
+        if(ver>=7){
+            uint32_t goal2_step=0,goal2_w=0;
+            w.read((char*)&goal2_step,4); w.read((char*)&goal2_w,4);
+            if(goal2_w!=loadedGoal2.w.size()) return false;
+            w.read((char*)loadedGoal2.w.data(),goal2_w*sizeof(float));
+            if(!w) return false;
+            loadedGoal2.step=static_cast<int>(goal2_step);
+        }
         impl_->seed=seed;
         impl_->curriculum=static_cast<int>(level);
         impl_->curriculum_start_step=static_cast<int>(start_step);
@@ -1310,6 +1655,8 @@ bool Engine::loadCheckpoint(const std::string&dir){
         impl_->step=step;
         impl_->goal1=std::move(loadedGoal);
         impl_->goal1data=Goal1Dataset(seed);
+        impl_->goal2=std::move(loadedGoal2);
+        impl_->goal2data=Goal2Dataset(seed);
         return true;
     }catch(...){return false;}
 }
@@ -1322,6 +1669,7 @@ std::string Engine::statusJson() const{
       <<",\"parameters\":"<<parameterCount()<<",\"test_loss\":"<<te.loss<<",\"test_accuracy\":"<<te.answer_accuracy
       <<",\"retention_l0_accuracy\":"<<r0.answer_accuracy<<",\"retention_l1_accuracy\":"<<r1.answer_accuracy<<",\"retention_l2_accuracy\":"<<r2.answer_accuracy<<",\"retention_l3_accuracy\":"<<r3.answer_accuracy<<",\"retention_l4_accuracy\":"<<r4.answer_accuracy
       <<",\"goal1_step\":"<<impl_->goal1.step<<",\"goal1_validation_accuracy\":"<<impl_->goal1.evaluate(impl_->goal1data.val).answer_accuracy
+      <<",\"goal2_step\":"<<impl_->goal2.step<<",\"goal2_validation_accuracy\":"<<impl_->goal2.evaluate(impl_->goal2data.val).answer_accuracy
       <<",\"pretrained\":false}";
     return s.str();
 }

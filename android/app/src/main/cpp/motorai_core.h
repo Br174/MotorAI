@@ -32,6 +32,13 @@ struct Goal1TrainResult {
     double elapsed_seconds = 0.0;
 };
 
+struct Goal2TrainResult {
+    int steps_completed = 0;
+    Metrics train;
+    Metrics validation;
+    double elapsed_seconds = 0.0;
+};
+
 class Engine {
 public:
     explicit Engine(uint32_t seed = 174);
@@ -70,6 +77,16 @@ public:
     int goal1Step() const;
     int goal1ParameterCount() const;
     std::string classifyGoal1(const std::string& text) const;
+
+    // Mini-AI Goal 2: learn to generate a short natural reply appropriate
+    // to the intent understood by Goal 1. No pretrained model or fixed UI reply.
+    Metrics evaluateGoal2Train();
+    Metrics evaluateGoal2Validation();
+    Metrics evaluateGoal2Test();
+    Goal2TrainResult trainGoal2(int steps, int batch_size = 16, float lr = 0.12f);
+    int goal2Step() const;
+    int goal2ParameterCount() const;
+    std::string respondGoal2(const std::string& text) const;
 
 private:
     class Impl;
