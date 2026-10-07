@@ -94,7 +94,7 @@ public class MainActivity extends Activity {
         root.addView(text("MotorAI Seed 011", 28, true));
         root.addView(text("Cervello: Transformer causale nativo C++ · pesi iniziali casuali · nessun modello preaddestrato", 15, false));
         root.addView(text("Curriculum: L0–L4 consolidati → Auto-Training V1 → L5 uguaglianza primo/ultimo", 14, false));
-        root.addView(text("Auto-Training V1: genera gli esercizi, addestra, valida, controlla le memorie, salva checkpoint e fa rollback automaticamente. L5 estende l’uguaglianza strutturale a sequenze di 4 simboli sull’alfabeto base a–i; l’estensione a–z arriverà dopo il consolidamento.", 14, false));
+        root.addView(text("Auto-Training V1: genera gli esercizi, addestra, valida, controlla le memorie, salva checkpoint e fa rollback automaticamente. L5 estende l’uguaglianza strutturale a sequenze di 4 simboli sull’alfabeto base a–i. MotorLab-Training usa un canale neurale dedicato, separato da L4; l’estensione a–z arriverà dopo il consolidamento.", 14, false));
 
         state = text("Stato: inizializzazione…", 16, true);
         curriculum = text("Livello: —", 15, true);
