@@ -270,7 +270,7 @@ struct Param {
 
 class TinyTransformer {
 public:
-    int vocab=14, context=7, d=32, ff=64;
+    int vocab=31, context=7, d=32, ff=64;
     std::vector<Param> p;
     std::mt19937 rng;
     std::mt19937 extra_rng;
@@ -359,14 +359,13 @@ public:
         Tensor logits=matmul(zf,P("head.w"));
         bool control=!ids.empty() && ids[0]==11;
         for(int i=0;i<logits.dim(0);++i){
-            logits.n->data[i*vocab+11]=-1e9f; // ? è solo input
             if(control){
-                // Nel compito confronto le sole uscite legali sono newline, + e -.
-                for(int j=1;j<=10;++j) logits.n->data[i*vocab+j]=-1e9f;
+                // L4: le sole uscite legali sono newline, + e -.
+                for(int j=1;j<vocab;++j)
+                    if(j!=12 && j!=13) logits.n->data[i*vocab+j]=-1e9f;
             }else{
-                // Nei livelli storici + e - non possono comparire.
-                logits.n->data[i*vocab+12]=-1e9f;
-                logits.n->data[i*vocab+13]=-1e9f;
+                // L0-L3: mantieni esattamente il vecchio alfabeto di uscita.
+                for(int j=11;j<vocab;++j) logits.n->data[i*vocab+j]=-1e9f;
             }
         }
         return logits;
@@ -415,8 +414,26 @@ struct Example {
 struct Dataset {
     std::vector<Example> train,val,test,retention_l0,retention_l1,retention_l2,retention_l3;
 
-    static int id(char c){ if(c=='\n')return 0; if(c=='>')return 1; if(c>='a'&&c<='i')return 2+(c-'a'); if(c=='?')return 11; if(c=='+')return 12; if(c=='-')return 13; return -1; }
-    static char ch(int id){ if(id==0)return '\n'; if(id==1)return '>'; if(id>=2&&id<=10)return char('a'+id-2); if(id==11)return '?'; if(id==12)return '+'; if(id==13)return '-'; return '?'; }
+    static int id(char c){
+        if(c=='\n')return 0;
+        if(c=='>')return 1;
+        if(c>='a'&&c<='i')return 2+(c-'a');
+        if(c=='?')return 11;
+        if(c=='+')return 12;
+        if(c=='-')return 13;
+        if(c>='j'&&c<='z')return 14+(c-'j');
+        return -1;
+    }
+    static char ch(int id){
+        if(id==0)return '\n';
+        if(id==1)return '>';
+        if(id>=2&&id<=10)return char('a'+id-2);
+        if(id==11)return '?';
+        if(id==12)return '+';
+        if(id==13)return '-';
+        if(id>=14&&id<=30)return char('j'+id-14);
+        return '?';
+    }
 
     static Example encode(const std::string&s){
         std::vector<int>a;
@@ -467,7 +484,7 @@ struct Dataset {
     }
 
     static void buildMarkedCompare(uint32_t seed,std::vector<Example>&tr,std::vector<Example>&va,std::vector<Example>&te){
-        std::string symbols="abcdefghi";
+        std::string symbols="abcdefghijklmnopqrstuvwxyz";
         std::vector<std::string> positives,negatives;
 
         // Positivi: primo == terzo, con simbolo centrale diverso come distrattore.
@@ -476,7 +493,7 @@ struct Dataset {
             positives.push_back(q);
         }
 
-        // Negativi: primo != terzo; il simbolo centrale è un distrattore.
+        // Negativi: primo != terzo; centro diverso da entrambi.
         for(char a:symbols) for(char mid:symbols) for(char z:symbols)
             if(a!=z && mid!=a && mid!=z){
                 std::string q; q+=a; q+=mid; q+=z;
@@ -486,21 +503,22 @@ struct Dataset {
         std::mt19937 r(seed);
         deterministicShuffle(positives,r);
         deterministicShuffle(negatives,r);
-        negatives.resize(positives.size()); // 72 + 72, perfettamente bilanciato.
+        negatives.resize(positives.size()); // 650 + 650, perfettamente bilanciato.
 
         auto append=[&](const std::string& q,char label,std::vector<Example>& dst){
             std::string out(1,label);
             dst.push_back(encode("?"+q+">"+out+"\n"));
         };
 
-        // Split stratificato: TRAIN 108 (54+/54-), VAL 18, TEST 18.
-        for(size_t i=0;i<72;++i){
-            if(i<54){ append(positives[i],'+',tr); append(negatives[i],'-',tr); }
-            else if(i<63){ append(positives[i],'+',va); append(negatives[i],'-',va); }
+        // Split stratificato e disgiunto per sequenza:
+        // TRAIN 1040 (520+/520-), VALIDATION 130, TEST 130.
+        for(size_t i=0;i<positives.size();++i){
+            if(i<520){ append(positives[i],'+',tr); append(negatives[i],'-',tr); }
+            else if(i<585){ append(positives[i],'+',va); append(negatives[i],'-',va); }
             else { append(positives[i],'+',te); append(negatives[i],'-',te); }
         }
 
-        // Prerequisito TRAIN-only: uguaglianza semplice a due simboli, bilanciata 9+/9-.
+        // Prerequisito TRAIN-only: uguaglianza semplice, 26+/26-.
         for(size_t i=0;i<symbols.size();++i){
             std::string same; same+=symbols[i]; same+=symbols[i];
             tr.push_back(encode("?"+same+">+\n"));
@@ -642,13 +660,14 @@ TrainResult Engine::train(int steps,int batch,float lr){
                 else if(b < 16) idx=72+deterministicIndex(r,48);
                 else if(b < 20) idx=120+deterministicIndex(r,48);
                 else idx=168+deterministicIndex(r,72);
-            }else if(impl_->curriculum>=4 && impl_->data.train.size()>=342){
-                // L4 14/24 (108 target + 18 prerequisiti), poi replay L3/L2/L1/L0.
-                if(b < 14) idx=deterministicIndex(r,126);
-                else if(b < 17) idx=126+deterministicIndex(r,48);
-                else if(b < 20) idx=174+deterministicIndex(r,48);
-                else if(b < 22) idx=222+deterministicIndex(r,48);
-                else idx=270+deterministicIndex(r,72);
+            }else if(impl_->curriculum>=4 && impl_->data.train.size()>=1308){
+                // L4 50%; replay L3/L2/L1/L0 12.5% ciascuno.
+                // Segmenti: L4=1092, L3=48, L2=48, L1=48, L0=72.
+                if(b < 12) idx=deterministicIndex(r,1092);
+                else if(b < 15) idx=1092+deterministicIndex(r,48);
+                else if(b < 18) idx=1140+deterministicIndex(r,48);
+                else if(b < 21) idx=1188+deterministicIndex(r,48);
+                else idx=1236+deterministicIndex(r,72);
             }else{
                 idx=deterministicIndex(r,impl_->data.train.size());
             }
@@ -757,15 +776,20 @@ bool Engine::loadCheckpoint(const std::string&dir){
             size_t target=it->value.n->data.size();
             if(target==sz){
                 it->value.n->data=data; it->m=mm; it->v=vv;
-            }else if(name=="token" && sz==11u*32u && target==static_cast<size_t>(impl_->model.vocab*32)){
-                for(size_t i=0;i<sz;++i){it->value.n->data[i]=data[i];it->m[i]=mm[i];it->v[i]=vv[i];}
-            }else if(name=="head.w" && sz==32u*11u && target==static_cast<size_t>(32*impl_->model.vocab)){
-                for(size_t row=0;row<32;++row) for(size_t col=0;col<11;++col){
-                    size_t src=row*11+col,dst=row*static_cast<size_t>(impl_->model.vocab)+col;
+            }else if(name=="token" && sz%32u==0 && target==static_cast<size_t>(impl_->model.vocab*32)){
+                size_t src_vocab=sz/32u;
+                size_t rows=std::min(src_vocab,static_cast<size_t>(impl_->model.vocab));
+                for(size_t row=0;row<rows;++row) for(size_t col=0;col<32;++col){
+                    size_t src=row*32+col,dst=row*32+col;
                     it->value.n->data[dst]=data[src]; it->m[dst]=mm[src]; it->v[dst]=vv[src];
                 }
-                for(size_t row=0;row<32;++row) for(int col=11;col<impl_->model.vocab;++col)
-                    it->value.n->data[row*static_cast<size_t>(impl_->model.vocab)+col]=0.0f;
+            }else if(name=="head.w" && sz%32u==0 && target==static_cast<size_t>(32*impl_->model.vocab)){
+                size_t src_vocab=sz/32u;
+                size_t cols=std::min(src_vocab,static_cast<size_t>(impl_->model.vocab));
+                for(size_t row=0;row<32;++row) for(size_t col=0;col<cols;++col){
+                    size_t src=row*src_vocab+col,dst=row*static_cast<size_t>(impl_->model.vocab)+col;
+                    it->value.n->data[dst]=data[src]; it->m[dst]=mm[src]; it->v[dst]=vv[src];
+                }
             }else return false;
         }
         if(!w)return false;
