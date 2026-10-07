@@ -1,0 +1,355 @@
+package it.motorai.seed;
+
+import android.app.ActivityManager;
+import android.app.job.JobInfo;
+import android.app.job.JobParameters;
+import android.app.job.JobScheduler;
+import android.app.job.JobService;
+import android.content.ComponentName;
+import android.content.Context;
+import android.content.Intent;
+import android.content.IntentFilter;
+import android.content.SharedPreferences;
+import android.os.BatteryManager;
+
+import org.json.JSONObject;
+
+import java.io.File;
+import java.util.Locale;
+
+public class MotorAIBackgroundJobService extends JobService {
+    private static final int JOB_ID = 11011;
+    private static final long PERIOD_MS = 20L * 60L * 1000L;
+    private volatile Thread worker;
+
+    public static void schedule(Context context) {
+        try {
+            JobScheduler scheduler = (JobScheduler) context.getSystemService(Context.JOB_SCHEDULER_SERVICE);
+            if (scheduler == null) return;
+            JobInfo info = new JobInfo.Builder(JOB_ID,
+                    new ComponentName(context, MotorAIBackgroundJobService.class))
+                    .setPeriodic(PERIOD_MS)
+                    .setPersisted(true)
+                    .setRequiresCharging(true)
+                    .build();
+            scheduler.schedule(info);
+            context.getSharedPreferences("motorai_background", Context.MODE_PRIVATE)
+                    .edit().putBoolean("enabled", true).apply();
+        } catch (Exception ignored) {
+        }
+    }
+
+    @Override public boolean onStartJob(JobParameters params) {
+        worker = new Thread(() -> {
+            boolean reschedule = false;
+            try {
+                runOneCycle();
+            } catch (Throwable e) {
+                appendFailure("Background Auto-Training: " + safe(e.getMessage()));
+                reschedule = true;
+            } finally {
+                jobFinished(params, reschedule);
+            }
+        }, "MotorAI-Background");
+        worker.start();
+        return true;
+    }
+
+    @Override public boolean onStopJob(JobParameters params) {
+        try { MainActivity.nativeRequestPause(); } catch (Throwable ignored) {}
+        return true;
+    }
+
+    private void runOneCycle() throws Exception {
+        SharedPreferences runtime = getSharedPreferences("motorai_runtime", MODE_PRIVATE);
+        if (runtime.getBoolean("ui_active", false)) {
+            sendCurrentTelemetry("background_skip_ui_active");
+            return;
+        }
+
+        File current = checkpoint("current");
+        if (!current.exists() || !MainActivity.nativeLoadCheckpoint(current.getAbsolutePath())) {
+            appendFailure("Background Auto-Training: checkpoint current non disponibile");
+            return;
+        }
+
+        Guard guard = readGuard();
+        if (!guard.allowed) {
+            sendCurrentTelemetry("background_pause_" + guard.reason);
+            return;
+        }
+
+        SharedPreferences evo = getSharedPreferences("motorai_evolution", MODE_PRIVATE);
+        boolean l5Accepted = evo.getBoolean("l5_accepted", false);
+        int level = MainActivity.nativeCurriculum();
+
+        if (level < 4) {
+            sendCurrentTelemetry("background_wait_baseline_L4");
+            return;
+        }
+
+        if (level == 4 && !l5Accepted) {
+            JSONObject base = new JSONObject(MainActivity.nativeTrainingEvaluate());
+            boolean baseOk = base.optDouble("val_accuracy", 0.0) >= 0.95
+                    && base.optDouble("retention_l0_accuracy", 0.0) >= 0.90
+                    && base.optDouble("retention_l1_accuracy", 0.0) >= 0.90
+                    && base.optDouble("retention_l2_accuracy", 0.0) >= 0.90
+                    && base.optDouble("retention_l3_accuracy", 0.0) >= 0.90;
+            if (!baseOk) {
+                appendFailure("Background Auto-Training: baseline L4 sotto soglia");
+                MotorAIBridgeClient.sendSnapshot(this,
+                        MotorAIBridgeClient.buildSnapshot(this, base, "baseline_L4_sotto_soglia"));
+                return;
+            }
+
+            File baseline = checkpoint("autotrain-baseline");
+            deleteTree(baseline);
+            if (!MainActivity.nativeSaveCheckpoint(baseline.getAbsolutePath())) {
+                appendFailure("Background Auto-Training: impossibile salvare autotrain-baseline");
+                return;
+            }
+
+            MainActivity.nativeSetCurriculum(5);
+            if (!rotateAndSave()) {
+                appendFailure("Background Auto-Training: checkpoint iniziale L5 fallito");
+                MainActivity.nativeLoadCheckpoint(baseline.getAbsolutePath());
+                rotateAndSave();
+                return;
+            }
+            runtime.edit().putInt("l5_stable_passes", 0).apply();
+            appendProgress("Auto-Training background: L5 avviato automaticamente");
+            level = 5;
+        }
+
+        if (level >= 5 && !l5Accepted) {
+            runLevel5Chunk(runtime, evo);
+            return;
+        }
+
+        sendCurrentTelemetry("background_idle_consolidated");
+    }
+
+    private void runLevel5Chunk(SharedPreferences runtime, SharedPreferences evo) throws Exception {
+        JSONObject before = new JSONObject(MainActivity.nativeTrainingEvaluate());
+        double beforeLoss = before.optDouble("val_loss", Double.POSITIVE_INFINITY);
+        double beforeAcc = before.optDouble("val_accuracy", 0.0);
+        double[] beforeR = retentions(before);
+
+        if (!rotateAndSave()) {
+            appendFailure("Background Auto-Training: checkpoint pre-chunk non disponibile");
+            return;
+        }
+
+        JSONObject after = new JSONObject(MainActivity.nativeTrainChunk(20));
+        double loss = after.optDouble("val_loss", Double.POSITIVE_INFINITY);
+        double acc = after.optDouble("val_accuracy", 0.0);
+        double[] r = retentions(after);
+
+        boolean regression = !Double.isFinite(loss)
+                || (loss > beforeLoss * 1.50 + 0.10 && acc <= beforeAcc);
+        boolean forgetting = false;
+        for (int i = 0; i < r.length; i++) {
+            if (r[i] < 0.80 && r[i] + 0.05 < beforeR[i]) {
+                forgetting = true;
+                break;
+            }
+        }
+
+        if (regression || forgetting) {
+            MainActivity.nativeLoadCheckpoint(checkpoint("current").getAbsolutePath());
+            runtime.edit().putInt("l5_stable_passes", 0).apply();
+            appendFailure("Background Auto-Training: regressione/dimenticanza · rollback automatico");
+            sendTelemetry(after, "background_rollback_regression");
+            return;
+        }
+
+        if (!rotateAndSave()) {
+            appendFailure("Background Auto-Training: salvataggio post-chunk fallito");
+            MainActivity.nativeLoadCheckpoint(checkpoint("previous").getAbsolutePath());
+            rotateAndSave();
+            return;
+        }
+
+        boolean accepted = acc >= 0.95;
+        for (double x : r) accepted = accepted && x >= 0.90;
+
+        int stable = accepted ? runtime.getInt("l5_stable_passes", 0) + 1 : 0;
+        runtime.edit().putInt("l5_stable_passes", stable).apply();
+
+        int step = after.optInt("step", 0);
+        int start = after.optInt("curriculum_start_step", step);
+        appendProgress(String.format(Locale.ITALY,
+                "Background L5 · %d passi · validation %.1f%% · memoria min %.1f%%",
+                Math.max(0, step - start), acc * 100.0, min(r) * 100.0));
+
+        if (stable >= 4) {
+            JSONObject fin = new JSONObject(MainActivity.nativeEvaluate());
+            double test = fin.optDouble("test_accuracy", 0.0);
+            boolean finalOk = test >= 0.90;
+            for (double x : retentions(fin)) finalOk = finalOk && x >= 0.90;
+
+            if (finalOk) {
+                rotateAndSave();
+                evo.edit()
+                        .putBoolean("l5_accepted", true)
+                        .putString("last_progress", String.format(Locale.ITALY,
+                                "L5 consolidato in background · TEST %.1f%%", test * 100.0))
+                        .apply();
+                runtime.edit().putInt("l5_stable_passes", 0).apply();
+                sendTelemetry(fin, "background_L5_consolidated");
+                return;
+            }
+
+            rollbackToBaseline("TEST finale L5 non superato");
+            sendCurrentTelemetry("background_rollback_final_test");
+            return;
+        }
+
+        if (step - start >= 5000) {
+            rollbackToBaseline("limite di sicurezza L5 raggiunto");
+            sendCurrentTelemetry("background_rollback_safety_limit");
+            return;
+        }
+
+        sendTelemetry(after, "background_training_L5");
+    }
+
+    private void rollbackToBaseline(String reason) {
+        File baseline = checkpoint("autotrain-baseline");
+        if (baseline.exists() && MainActivity.nativeLoadCheckpoint(baseline.getAbsolutePath())) {
+            rotateAndSave();
+        }
+        getSharedPreferences("motorai_evolution", MODE_PRIVATE)
+                .edit().putBoolean("l5_accepted", false).apply();
+        getSharedPreferences("motorai_runtime", MODE_PRIVATE)
+                .edit().putInt("l5_stable_passes", 0).apply();
+        appendFailure("Background Auto-Training: " + reason + " · rollback Seed 010");
+    }
+
+    private void sendCurrentTelemetry(String status) {
+        try {
+            int level = MainActivity.nativeCurriculum();
+            boolean accepted = getSharedPreferences("motorai_evolution", MODE_PRIVATE)
+                    .getBoolean("l5_accepted", false);
+            JSONObject j = (level >= 5 && !accepted)
+                    ? new JSONObject(MainActivity.nativeTrainingEvaluate())
+                    : new JSONObject(MainActivity.nativeEvaluate());
+            sendTelemetry(j, status);
+        } catch (Exception e) {
+            appendFailure("Bridge background: " + safe(e.getMessage()));
+        }
+    }
+
+    private void sendTelemetry(JSONObject metrics, String status) {
+        JSONObject snapshot = MotorAIBridgeClient.buildSnapshot(this, metrics, status);
+        if (!MotorAIBridgeClient.sendSnapshot(this, snapshot)) {
+            appendFailure("Diagnostic Bridge: invio non riuscito; nuovo tentativo al prossimo ciclo");
+        }
+    }
+
+    private double[] retentions(JSONObject j) {
+        return new double[] {
+                j.optDouble("retention_l0_accuracy", 1.0),
+                j.optDouble("retention_l1_accuracy", 1.0),
+                j.optDouble("retention_l2_accuracy", 1.0),
+                j.optDouble("retention_l3_accuracy", 1.0),
+                j.optDouble("retention_l4_accuracy", 1.0)
+        };
+    }
+
+    private double min(double[] values) {
+        double m = 1.0;
+        for (double x : values) m = Math.min(m, x);
+        return m;
+    }
+
+    private File checkpoint(String name) {
+        return new File(new File(getFilesDir(), "motorai/checkpoints"), name);
+    }
+
+    private boolean rotateAndSave() {
+        File root = new File(getFilesDir(), "motorai/checkpoints");
+        if (!root.exists() && !root.mkdirs()) return false;
+        File temp = checkpoint("tmp-bg");
+        File current = checkpoint("current");
+        File previous = checkpoint("previous");
+        deleteTree(temp);
+        if (!MainActivity.nativeSaveCheckpoint(temp.getAbsolutePath())) return false;
+        deleteTree(previous);
+        if (current.exists() && !current.renameTo(previous)) {
+            deleteTree(temp);
+            return false;
+        }
+        return temp.renameTo(current);
+    }
+
+    private static void deleteTree(File f) {
+        if (f == null || !f.exists()) return;
+        if (f.isDirectory()) {
+            File[] children = f.listFiles();
+            if (children != null) for (File child : children) deleteTree(child);
+        }
+        //noinspection ResultOfMethodCallIgnored
+        f.delete();
+    }
+
+    private Guard readGuard() {
+        Intent battery = registerReceiver(null, new IntentFilter(Intent.ACTION_BATTERY_CHANGED));
+        int temp10 = battery != null ? battery.getIntExtra(BatteryManager.EXTRA_TEMPERATURE, 0) : 0;
+        float temp = temp10 / 10f;
+        int level = battery != null ? battery.getIntExtra(BatteryManager.EXTRA_LEVEL, -1) : -1;
+        int status = battery != null ? battery.getIntExtra(BatteryManager.EXTRA_STATUS, -1) : -1;
+        boolean charging = status == BatteryManager.BATTERY_STATUS_CHARGING || status == BatteryManager.BATTERY_STATUS_FULL;
+
+        ActivityManager am = (ActivityManager) getSystemService(Context.ACTIVITY_SERVICE);
+        ActivityManager.MemoryInfo mi = new ActivityManager.MemoryInfo();
+        am.getMemoryInfo(mi);
+        long freeMb = mi.availMem / (1024L * 1024L);
+
+        if (!charging) return new Guard(false, "non_in_carica");
+        if (temp >= 40.5f) return new Guard(false, "temperatura_alta");
+        if (level >= 0 && level < 30) return new Guard(false, "batteria_bassa");
+        if (mi.lowMemory || freeMb < 512) return new Guard(false, "ram_bassa");
+        return new Guard(true, "");
+    }
+
+    private void appendProgress(String message) {
+        getSharedPreferences("motorai_evolution", MODE_PRIVATE).edit()
+                .putString("last_progress", message)
+                .apply();
+    }
+
+    private void appendFailure(String message) {
+        try {
+            SharedPreferences p = getSharedPreferences("motorai_diagnostics", MODE_PRIVATE);
+            String old = p.getString("failures", "");
+            String entry = "• " + new java.text.SimpleDateFormat("dd/MM/yyyy HH:mm:ss", Locale.ITALY)
+                    .format(new java.util.Date()) + " — " + safe(message);
+            String combined = old == null || old.isEmpty() ? entry : old + "\n" + entry;
+            String[] lines = combined.split("\n");
+            int from = Math.max(0, lines.length - 12);
+            StringBuilder kept = new StringBuilder();
+            for (int i = from; i < lines.length; i++) {
+                if (kept.length() > 0) kept.append("\n");
+                kept.append(lines[i]);
+            }
+            p.edit().putString("failures", kept.toString()).apply();
+        } catch (Exception ignored) {
+        }
+    }
+
+    private static String safe(String s) {
+        if (s == null) return "errore sconosciuto";
+        String v = s.replace('\n', ' ').replace('\r', ' ');
+        return v.substring(0, Math.min(300, v.length()));
+    }
+
+    private static class Guard {
+        final boolean allowed;
+        final String reason;
+        Guard(boolean allowed, String reason) {
+            this.allowed = allowed;
+            this.reason = reason;
+        }
+    }
+}
