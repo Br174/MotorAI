@@ -320,6 +320,13 @@ public:
         addParam("grow2.k.w",{d,d}); addParam("grow2.k.b",{d},false,0);
         addParam("grow2.v.w",{d,d}); addParam("grow2.v.b",{d},false,0);
         addParam("grow2.o.w",{d,d},false,0); addParam("grow2.o.b",{d},false,0);
+
+        // Growth Adapter 3: attenzione dedicata a L5. Output a zero = nessun effetto sulla Seed010 al caricamento.
+        addParam("grow3.ln.g",{d},false,1); addParam("grow3.ln.b",{d},false,0);
+        addParam("grow3.q.w",{d,d}); addParam("grow3.q.b",{d},false,0);
+        addParam("grow3.k.w",{d,d}); addParam("grow3.k.b",{d},false,0);
+        addParam("grow3.v.w",{d,d}); addParam("grow3.v.b",{d},false,0);
+        addParam("grow3.o.w",{d,d},false,0); addParam("grow3.o.b",{d},false,0);
     }
     int parameterCount() const { int n=0; for(auto&z:p)n+=z.value.size(); return n; }
     void zeroGrad(){ for(auto&z:p) std::fill(z.value.n->grad.begin(),z.value.n->grad.end(),0.0f); }
@@ -355,7 +362,19 @@ public:
         Tensor gh=gelu(linear(zg,"grow1.fc1.w","grow1.fc1.b"));
         Tensor gd=linear(gh,"grow1.fc2.w","grow1.fc2.b");
         Tensor xg=add(xa,gd);
-        Tensor zf=layerNorm(xg,P("lnf.g"),P("lnf.b"));
+
+        // L5 relational growth channel. grow3.o.* starts at zero, so xg3 == xg before L5 training.
+        Tensor z3=layerNorm(xg,P("grow3.ln.g"),P("grow3.ln.b"));
+        Tensor q3=linear(z3,"grow3.q.w","grow3.q.b");
+        Tensor k3=linear(z3,"grow3.k.w","grow3.k.b");
+        Tensor v3=linear(z3,"grow3.v.w","grow3.v.b");
+        Tensor s3=scale(matmul(q3,transpose2(k3)),1.0f/std::sqrt((float)d));
+        Tensor a3=softmaxRows(causalMask(s3));
+        Tensor y3=matmul(a3,v3);
+        Tensor p3=linear(y3,"grow3.o.w","grow3.o.b");
+        Tensor xg3=add(xg,p3);
+
+        Tensor zf=layerNorm(xg3,P("lnf.g"),P("lnf.b"));
         Tensor logits=matmul(zf,P("head.w"));
         bool control=!ids.empty() && ids[0]==11;
         for(int i=0;i<logits.dim(0);++i){
@@ -374,15 +393,27 @@ public:
     Tensor lossRange(const std::vector<int>& x,const std::vector<int>& y,int start,int count){ return crossEntropyRange(forward(x),y,start,count); }
 
     float updateScale(const Param& z,size_t i,int curriculum) const {
-        bool growth=z.name.rfind("grow",0)==0;
+        bool g1=z.name.rfind("grow1.",0)==0;
+        bool g2=z.name.rfind("grow2.",0)==0;
+        bool g3=z.name.rfind("grow3.",0)==0;
+        bool growth=g1||g2||g3;
+
         if(curriculum<4) return growth ? 0.0f : 1.0f;
-        if(growth) return 1.0f;
-        if(z.name=="token" && i>=static_cast<size_t>(11*d)) return 1.0f;
-        if(z.name=="head.w"){
-            size_t col=i%static_cast<size_t>(vocab);
-            if(col==12 || col==13) return 1.0f; // classi +/- del confronto
+
+        if(curriculum==4){
+            if(g3) return 0.0f;      // L5 module must remain pristine.
+            if(g1||g2) return 1.0f;  // Seed010 growth modules.
+            if(z.name=="token" && i>=static_cast<size_t>(11*d)) return 1.0f;
+            if(z.name=="head.w"){
+                size_t col=i%static_cast<size_t>(vocab);
+                if(col==12 || col==13) return 1.0f;
+            }
+            return 0.10f;
         }
-        return 0.10f; // adattamento lento del cervello storico
+
+        // L5: preserve the complete Seed010 brain and learn into grow3.
+        if(g3) return 1.0f;
+        return 0.0f;
     }
     void adamStep(float lr,int batch,int step,int curriculum){
         double sq=0;
@@ -718,12 +749,13 @@ TrainResult Engine::train(int steps,int batch,float lr){
                 else if(b < 21) idx=1188+deterministicIndex(r,48);
                 else idx=1236+deterministicIndex(r,72);
             }else if(impl_->curriculum>=5 && impl_->data.train.size()>=1176){
-                // Auto-Training L5: 50% nuovo livello, 16.7% L4, 8.3% per L3/L2/L1/L0.
-                if(b < 12) idx=deterministicIndex(r,800);
-                else if(b < 16) idx=800+deterministicIndex(r,160);
-                else if(b < 18) idx=960+deterministicIndex(r,48);
-                else if(b < 20) idx=1008+deterministicIndex(r,48);
-                else if(b < 22) idx=1056+deterministicIndex(r,48);
+                // Auto-Training L5: 10/24 L5, 8/24 L4, 2/24 L3, 2/24 L2, 1/24 L1, 1/24 L0.
+                // Il cervello Seed010 è congelato; il replay insegna a grow3 a non alterarne le decisioni.
+                if(b < 10) idx=deterministicIndex(r,800);
+                else if(b < 18) idx=800+deterministicIndex(r,160);
+                else if(b < 20) idx=960+deterministicIndex(r,48);
+                else if(b < 22) idx=1008+deterministicIndex(r,48);
+                else if(b < 23) idx=1056+deterministicIndex(r,48);
                 else idx=1104+deterministicIndex(r,72);
             }else{
                 idx=deterministicIndex(r,impl_->data.train.size());
