@@ -53,8 +53,7 @@ public class MiniAiGoalsActivity extends Activity {
         root.addView(totalBar, new LinearLayout.LayoutParams(
                 LinearLayout.LayoutParams.MATCH_PARENT, dp(24)));
 
-        root.addView(text("✅ Fondamenta neurali: L0-L5 completate
-" +
+        root.addView(text("✅ Fondamenta neurali: L0-L5 completate\n" +
                 "Non vengono sommate artificialmente al punteggio Mini-AI: servono come base per i nuovi obiettivi.", 14, false));
 
         root.addView(text("Come si calcola", 17, true));
