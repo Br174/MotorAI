@@ -1552,11 +1552,13 @@ public:
     Goal1Dataset goal1data;
     Goal2ResponseBrain goal2;
     Goal2Dataset goal2data;
+    Goal3MemoryBrain goal3;
+    Goal3Dataset goal3data;
     std::atomic<bool> pause{false};
     mutable std::mutex mu;
     explicit Impl(uint32_t s)
         :seed(s),model(s),curriculum(0),curriculum_start_step(0),data(s,0),
-         goal1(s),goal1data(s),goal2(s),goal2data(s){}
+         goal1(s),goal1data(s),goal2(s),goal2data(s),goal3(s),goal3data(s){}
 };
 
 Engine::Engine(uint32_t seed):impl_(std::make_unique<Impl>(seed)){}
@@ -1620,6 +1622,27 @@ std::string Engine::respondGoal2(const std::string& text) const {
     std::ostringstream s;
     s<<"{\"intent\":\""<<Goal1IntentBrain::labelName(intent)
      <<"\",\"reply\":\""<<esc(reply)<<"\"}";
+    return s.str();
+}
+
+Metrics Engine::evaluateGoal3Train(){ std::lock_guard<std::mutex> g(impl_->mu); return impl_->goal3.evaluate(impl_->goal3data.train); }
+Metrics Engine::evaluateGoal3Validation(){ std::lock_guard<std::mutex> g(impl_->mu); return impl_->goal3.evaluate(impl_->goal3data.val); }
+Metrics Engine::evaluateGoal3Test(){ std::lock_guard<std::mutex> g(impl_->mu); return impl_->goal3.evaluate(impl_->goal3data.test); }
+Goal3TrainResult Engine::trainGoal3(int steps,int batch,float lr){
+    std::lock_guard<std::mutex> g(impl_->mu);
+    return impl_->goal3.train(impl_->goal3data,steps,batch,lr);
+}
+int Engine::goal3Step() const { std::lock_guard<std::mutex> g(impl_->mu); return impl_->goal3.step; }
+int Engine::goal3ParameterCount() const { std::lock_guard<std::mutex> g(impl_->mu); return impl_->goal3.parameterCount(); }
+std::string Engine::classifyGoal3(const std::string& text) const {
+    std::lock_guard<std::mutex> g(impl_->mu);
+    float confidence=0.0f;
+    int label=impl_->goal3.predict(text,&confidence);
+    std::ostringstream s;
+    s<<std::fixed<<std::setprecision(4)
+     <<"{\"action\":\""<<Goal3MemoryBrain::actionName(label)
+     <<"\",\"slot\":\""<<Goal3MemoryBrain::slotName(label)
+     <<"\",\"confidence\":"<<confidence<<"}";
     return s.str();
 }
 
@@ -1709,8 +1732,8 @@ bool Engine::saveCheckpoint(const std::string&dir) const{
     try{
         std::filesystem::create_directories(dir);
         std::ofstream w(dir+"/weights.bin",std::ios::binary); if(!w)return false;
-        const char magic[8]={'M','O','T','A','I','0','1','3'}; w.write(magic,8);
-        uint32_t ver=7,seed=impl_->seed,step=impl_->step,level=impl_->curriculum,start_step=impl_->curriculum_start_step,pc=impl_->model.p.size();
+        const char magic[8]={'M','O','T','A','I','0','1','4'}; w.write(magic,8);
+        uint32_t ver=8,seed=impl_->seed,step=impl_->step,level=impl_->curriculum,start_step=impl_->curriculum_start_step,pc=impl_->model.p.size();
         w.write((char*)&ver,4); w.write((char*)&seed,4); w.write((char*)&step,4); w.write((char*)&level,4); w.write((char*)&start_step,4); w.write((char*)&pc,4);
         for(auto&z:impl_->model.p){
             uint32_t nl=z.name.size(),sz=z.value.n->data.size();
@@ -1728,6 +1751,12 @@ bool Engine::saveCheckpoint(const std::string&dir) const{
         uint32_t goal2_w=static_cast<uint32_t>(impl_->goal2.w.size());
         w.write((char*)&goal2_step,4); w.write((char*)&goal2_w,4);
         w.write((char*)impl_->goal2.w.data(),goal2_w*sizeof(float));
+        uint32_t goal3_step=static_cast<uint32_t>(impl_->goal3.step);
+        uint32_t goal3_w=static_cast<uint32_t>(impl_->goal3.w.size());
+        uint32_t goal3_b=static_cast<uint32_t>(impl_->goal3.b.size());
+        w.write((char*)&goal3_step,4); w.write((char*)&goal3_w,4); w.write((char*)&goal3_b,4);
+        w.write((char*)impl_->goal3.w.data(),goal3_w*sizeof(float));
+        w.write((char*)impl_->goal3.b.data(),goal3_b*sizeof(float));
         w.close();
         Metrics va=eval(const_cast<TinyTransformer&>(impl_->model),impl_->data.val);
         Metrics r0=eval(const_cast<TinyTransformer&>(impl_->model),impl_->data.retention_l0);
@@ -1749,6 +1778,8 @@ bool Engine::saveCheckpoint(const std::string&dir) const{
          <<",\n  \"goal1_validation_accuracy\": "<<impl_->goal1.evaluate(impl_->goal1data.val).answer_accuracy
          <<",\n  \"goal2_step\": "<<impl_->goal2.step
          <<",\n  \"goal2_validation_accuracy\": "<<impl_->goal2.evaluate(impl_->goal2data.val).answer_accuracy
+         <<",\n  \"goal3_step\": "<<impl_->goal3.step
+         <<",\n  \"goal3_validation_accuracy\": "<<impl_->goal3.evaluate(impl_->goal3data.val).answer_accuracy
          <<",\n  \"pretrained_model\": false,\n  \"weights_origin\": \"random_then_local_training\"\n}\n";
         return (bool)j;
     }catch(...){return false;}
@@ -1783,6 +1814,9 @@ bool Engine::loadCheckpoint(const std::string&dir){
         }else if(m=="MOTAI013"){
             w.read((char*)&ver,4); w.read((char*)&seed,4); w.read((char*)&step,4); w.read((char*)&level,4); w.read((char*)&start_step,4); w.read((char*)&pc,4);
             if(ver!=7 || level>5 || start_step>step) return false;
+        }else if(m=="MOTAI014"){
+            w.read((char*)&ver,4); w.read((char*)&seed,4); w.read((char*)&step,4); w.read((char*)&level,4); w.read((char*)&start_step,4); w.read((char*)&pc,4);
+            if(ver!=8 || level>5 || start_step>step) return false;
         }else return false;
 
         // Migrazione per vocabolario 11 -> 12: carica per nome e conserva il nuovo token ? inizializzato localmente.
@@ -1834,6 +1868,16 @@ bool Engine::loadCheckpoint(const std::string&dir){
             if(!w) return false;
             loadedGoal2.step=static_cast<int>(goal2_step);
         }
+        Goal3MemoryBrain loadedGoal3(seed);
+        if(ver>=8){
+            uint32_t goal3_step=0,goal3_w=0,goal3_b=0;
+            w.read((char*)&goal3_step,4); w.read((char*)&goal3_w,4); w.read((char*)&goal3_b,4);
+            if(goal3_w!=loadedGoal3.w.size() || goal3_b!=loadedGoal3.b.size()) return false;
+            w.read((char*)loadedGoal3.w.data(),goal3_w*sizeof(float));
+            w.read((char*)loadedGoal3.b.data(),goal3_b*sizeof(float));
+            if(!w) return false;
+            loadedGoal3.step=static_cast<int>(goal3_step);
+        }
         impl_->seed=seed;
         impl_->curriculum=static_cast<int>(level);
         impl_->curriculum_start_step=static_cast<int>(start_step);
@@ -1843,6 +1887,8 @@ bool Engine::loadCheckpoint(const std::string&dir){
         impl_->goal1data=Goal1Dataset(seed);
         impl_->goal2=std::move(loadedGoal2);
         impl_->goal2data=Goal2Dataset(seed);
+        impl_->goal3=std::move(loadedGoal3);
+        impl_->goal3data=Goal3Dataset(seed);
         return true;
     }catch(...){return false;}
 }
@@ -1856,6 +1902,7 @@ std::string Engine::statusJson() const{
       <<",\"retention_l0_accuracy\":"<<r0.answer_accuracy<<",\"retention_l1_accuracy\":"<<r1.answer_accuracy<<",\"retention_l2_accuracy\":"<<r2.answer_accuracy<<",\"retention_l3_accuracy\":"<<r3.answer_accuracy<<",\"retention_l4_accuracy\":"<<r4.answer_accuracy
       <<",\"goal1_step\":"<<impl_->goal1.step<<",\"goal1_validation_accuracy\":"<<impl_->goal1.evaluate(impl_->goal1data.val).answer_accuracy
       <<",\"goal2_step\":"<<impl_->goal2.step<<",\"goal2_validation_accuracy\":"<<impl_->goal2.evaluate(impl_->goal2data.val).answer_accuracy
+      <<",\"goal3_step\":"<<impl_->goal3.step<<",\"goal3_validation_accuracy\":"<<impl_->goal3.evaluate(impl_->goal3data.val).answer_accuracy
       <<",\"pretrained\":false}";
     return s.str();
 }
