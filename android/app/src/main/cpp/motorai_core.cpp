@@ -578,37 +578,35 @@ struct Dataset {
         deterministicShuffle(va,r);
         deterministicShuffle(te,r);
     }
-    static void buildEdgeEquality4(uint32_t seed,std::vector<Example>&tr,std::vector<Example>&va,std::vector<Example>&te){
-        // Auto-Training V1, gradino A:
-        // estremi da a-e, due distrattori centrali da a-i.
-        // Il modello deve generalizzare la relazione primo==ultimo, non memorizzare sequenze.
-        std::string ends="abcde";
-        std::string middle="abcdefghi";
+    static void buildAdjacentEquality3(uint32_t seed,std::vector<Example>&tr,std::vector<Example>&va,std::vector<Example>&te){
+        // Auto-Training V1: nuova posizione relazionale.
+        // + se i primi due simboli coincidono, - se sono diversi; il terzo è un distrattore.
+        std::string symbols="abcdefghijklmnopqrstuvwxyz";
         std::vector<std::string> positives,negatives;
 
-        for(char a:ends) for(char b:middle) for(char cc:middle){
-            std::string p; p+=a; p+=b; p+=cc; p+=a;
+        for(char a:symbols) for(char x:symbols){
+            std::string p; p+=a; p+=a; p+=x;
             positives.push_back(p);
-            for(char z:ends) if(z!=a){
-                std::string n; n+=a; n+=b; n+=cc; n+=z;
-                negatives.push_back(n);
-            }
+        }
+        for(char a:symbols) for(char b:symbols) if(b!=a) for(char x:symbols){
+            std::string n; n+=a; n+=b; n+=x;
+            negatives.push_back(n);
         }
 
         std::mt19937 r(seed);
         deterministicShuffle(positives,r);
         deterministicShuffle(negatives,r);
-        negatives.resize(positives.size()); // 405 positivi + 405 negativi.
+        negatives.resize(positives.size()); // 676 + 676, classi bilanciate.
 
         auto append=[&](const std::string& q,char label,std::vector<Example>& dst){
             std::string out(1,label);
             dst.push_back(encode("!"+q+">"+out+"\n"));
         };
 
-        // Split stratificato e disgiunto: 600 train, 100 validation, 110 test.
+        // TRAIN 1000, VALIDATION 176, TEST 176.
         for(size_t i=0;i<positives.size();++i){
-            if(i<300){ append(positives[i],'+',tr); append(negatives[i],'-',tr); }
-            else if(i<350){ append(positives[i],'+',va); append(negatives[i],'-',va); }
+            if(i<500){ append(positives[i],'+',tr); append(negatives[i],'-',tr); }
+            else if(i<588){ append(positives[i],'+',va); append(negatives[i],'-',va); }
             else { append(positives[i],'+',te); append(negatives[i],'-',te); }
         }
         deterministicShuffle(tr,r);
@@ -628,7 +626,7 @@ struct Dataset {
         buildPairs(seed+2027,2,l2tr,l2va,l2te);
         buildPairs(seed+3037,3,l3tr,l3va,l3te);
         buildMarkedCompare(seed+4051,l4tr,l4va,l4te);
-        buildEdgeEquality4(seed+5099,l5tr,l5va,l5te);
+        buildAdjacentEquality3(seed+5099,l5tr,l5va,l5te);
 
         retention_l0=l0te;
         retention_l1=l1te;
@@ -677,8 +675,8 @@ struct Dataset {
             return;
         }
 
-        // Livello 5: Auto-Training V1. Uguaglianza strutturale primo/ultimo su 4 simboli.
-        // Segmenti: L5=600, L4=160, L3=48, L2=48, L1=48, L0=72.
+        // Livello 5: Auto-Training V1. Uguaglianza adiacente dei primi due simboli.
+        // Segmenti: L5=1000, L4=160, L3=48, L2=48, L1=48, L0=72.
         train=l5tr; val=l5va; test=l5te;
         for(size_t i=0;i<160 && i<l4tr.size();++i) train.push_back(l4tr[i]);
         for(size_t i=0;i<48 && i<l3tr.size();++i) train.push_back(l3tr[i]);
@@ -768,10 +766,9 @@ TrainResult Engine::train(int steps,int batch,float lr){
                 else if(b < 18) idx=1140+deterministicIndex(r,48);
                 else if(b < 21) idx=1188+deterministicIndex(r,48);
                 else idx=1236+deterministicIndex(r,72);
-            }else if(impl_->curriculum>=5 && impl_->data.train.size()>=976){
-                // L5 is fully isolated: train 100% on the new task.
-                // Retention is still measured after every chunk as a hard safety gate.
-                idx=deterministicIndex(r,600);
+            }else if(impl_->curriculum>=5 && impl_->data.train.size()>=1376){
+                // L5 is fully isolated: 100% of the batch is the autonomous new task.
+                idx=deterministicIndex(r,1000);
             }else{
                 idx=deterministicIndex(r,impl_->data.train.size());
             }
