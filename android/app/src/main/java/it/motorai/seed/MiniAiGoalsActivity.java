@@ -1,8 +1,11 @@
 package it.motorai.seed;
 
 import android.app.Activity;
+import android.graphics.Color;
 import android.graphics.Typeface;
+import android.graphics.drawable.GradientDrawable;
 import android.os.Bundle;
+import android.view.Gravity;
 import android.widget.Button;
 import android.widget.LinearLayout;
 import android.widget.ProgressBar;
@@ -15,12 +18,16 @@ public class MiniAiGoalsActivity extends Activity {
     private LinearLayout goalsRoot;
     private TextView totalText;
     private ProgressBar totalBar;
+    private TextView activeTitle;
+    private TextView activeStatus;
+    private ProgressBar activeBar;
 
     private TextView text(String value, int sp, boolean bold) {
         TextView v = new TextView(this);
         v.setText(value);
         v.setTextSize(sp);
-        v.setPadding(22, 10, 22, 10);
+        v.setTextColor(Color.rgb(35,45,70));
+        v.setPadding(0, dp(4), 0, dp(4));
         if (bold) v.setTypeface(Typeface.DEFAULT_BOLD);
         return v;
     }
@@ -32,46 +39,90 @@ public class MiniAiGoalsActivity extends Activity {
         return b;
     }
 
+    private GradientDrawable rounded(int color, int radiusDp) {
+        GradientDrawable d = new GradientDrawable();
+        d.setColor(color);
+        d.setCornerRadius(dp(radiusDp));
+        d.setStroke(dp(1), Color.rgb(225,232,242));
+        return d;
+    }
+
+    private LinearLayout card(int color) {
+        LinearLayout v = new LinearLayout(this);
+        v.setOrientation(LinearLayout.VERTICAL);
+        v.setPadding(dp(16),dp(14),dp(16),dp(14));
+        v.setBackground(rounded(color,18));
+        LinearLayout.LayoutParams lp = new LinearLayout.LayoutParams(
+                LinearLayout.LayoutParams.MATCH_PARENT, LinearLayout.LayoutParams.WRAP_CONTENT);
+        lp.setMargins(0,0,0,dp(12));
+        v.setLayoutParams(lp);
+        return v;
+    }
+
     @Override protected void onCreate(Bundle state) {
         super.onCreate(state);
 
         ScrollView scroll = new ScrollView(this);
         LinearLayout root = new LinearLayout(this);
         root.setOrientation(LinearLayout.VERTICAL);
-        root.setPadding(20, 28, 20, 28);
+        root.setPadding(dp(16),dp(20),dp(16),dp(24));
+        root.setBackgroundColor(Color.rgb(247,249,253));
         scroll.addView(root);
 
-        root.addView(text("🎯 Percorso Mini-AI", 25, true));
-        root.addView(text(
-                "Questa scheda misura quanto MotorAI si sta avvicinando a una piccola AI assistente. " +
-                "Le fondamenta neurali L0-L5 sono già consolidate, ma restano separate da questi 10 macro-obiettivi.", 14, false));
+        LinearLayout header = new LinearLayout(this);
+        header.setOrientation(LinearLayout.HORIZONTAL);
+        header.setGravity(Gravity.CENTER_VERTICAL);
+        Button back = button("←");
+        back.setTextSize(20);
+        header.addView(back,new LinearLayout.LayoutParams(dp(54),dp(54)));
+        LinearLayout headText = new LinearLayout(this);
+        headText.setOrientation(LinearLayout.VERTICAL);
+        headText.addView(text("🎯 Percorso Mini-AI",25,true));
+        headText.addView(text("Progressi verso una piccola AI assistente.",14,false));
+        header.addView(headText,new LinearLayout.LayoutParams(
+                0,LinearLayout.LayoutParams.WRAP_CONTENT,1));
+        root.addView(header);
+        back.setOnClickListener(v -> finish());
 
-        totalText = text("Capacità complessiva: —", 20, true);
-        totalBar = new ProgressBar(this, null, android.R.attr.progressBarStyleHorizontal);
+        LinearLayout totalCard = card(Color.rgb(246,250,255));
+        totalText = text("Progresso totale Mini-AI: —",20,true);
+        totalCard.addView(totalText);
+        totalBar = new ProgressBar(this,null,android.R.attr.progressBarStyleHorizontal);
         totalBar.setMax(100);
-        root.addView(totalText);
-        root.addView(totalBar, new LinearLayout.LayoutParams(
-                LinearLayout.LayoutParams.MATCH_PARENT, dp(24)));
+        totalCard.addView(totalBar,new LinearLayout.LayoutParams(
+                LinearLayout.LayoutParams.MATCH_PARENT,dp(22)));
+        root.addView(totalCard);
 
-        root.addView(text("✅ Fondamenta neurali: L0-L5 completate\n" +
-                "Non vengono sommate artificialmente al punteggio Mini-AI: servono come base per i nuovi obiettivi.", 14, false));
+        LinearLayout foundationCard = card(Color.rgb(244,252,247));
+        foundationCard.addView(text("✅ Fondamenta neurali: L0-L5 completate",16,true));
+        foundationCard.addView(text(
+                "Sono la base del percorso Mini-AI e non vengono conteggiate nei 10 obiettivi.",13,false));
+        root.addView(foundationCard);
 
-        root.addView(text("Come si calcola", 17, true));
-        root.addView(text(
-                "Ogni obiettivo pesa il 10% del totale. La sua percentuale cresce solo quando benchmark dedicati " +
-                "mostrano progresso reale. Il 100% arriva soltanto quando l'obiettivo supera il controllo finale.", 13, false));
+        LinearLayout activeCard = card(Color.rgb(246,250,255));
+        activeCard.addView(text("🎯 Obiettivo attivo 1/10",14,false));
+        activeTitle = text("Capire una richiesta normale",20,true);
+        activeCard.addView(activeTitle);
+        activeBar = new ProgressBar(this,null,android.R.attr.progressBarStyleHorizontal);
+        activeBar.setMax(100);
+        activeCard.addView(activeBar,new LinearLayout.LayoutParams(
+                LinearLayout.LayoutParams.MATCH_PARENT,dp(20)));
+        activeStatus = text("0% · non iniziato",14,true);
+        activeCard.addView(activeStatus);
+        activeCard.addView(text(
+                "Comprendere semplici richieste in italiano e capire cosa viene chiesto.",13,false));
+        root.addView(activeCard);
 
+        root.addView(text("Tutti gli obiettivi",20,true));
         goalsRoot = new LinearLayout(this);
         goalsRoot.setOrientation(LinearLayout.VERTICAL);
         root.addView(goalsRoot);
 
-        Button refresh = button("↻ Aggiorna percentuali");
-        Button close = button("← Torna a MotorAI");
-        root.addView(refresh);
-        root.addView(close);
-
-        refresh.setOnClickListener(v -> load());
-        close.setOnClickListener(v -> finish());
+        LinearLayout calcCard = card(Color.WHITE);
+        calcCard.addView(text("📊 Come si calcola",17,true));
+        calcCard.addView(text(
+                "Ogni obiettivo vale il 10% del totale. Il totale è la media dei 10 obiettivi.",13,false));
+        root.addView(calcCard);
 
         setContentView(scroll);
         load();
@@ -88,27 +139,54 @@ public class MiniAiGoalsActivity extends Activity {
         double total = MiniAiGoals.totalPercent(this);
         int completed = MiniAiGoals.completedCount(this);
         totalText.setText(String.format(Locale.ITALY,
-                "Capacità complessiva Mini-AI: %.1f%% · %d/10 completati",
-                total, completed));
+                "Progresso totale Mini-AI: %.1f%% · %d/10 completati", total, completed));
         totalBar.setProgress((int)Math.round(total));
 
+        int g1 = MiniAiGoals.percent(this,0);
+        activeBar.setProgress(g1);
+        activeStatus.setText(g1 + "% · " + MiniAiGoals.status(this,0));
+
         goalsRoot.removeAllViews();
-        for (int i = 0; i < MiniAiGoals.TITLES.length; i++) {
-            int percent = MiniAiGoals.percent(this, i);
-            String status = MiniAiGoals.status(this, i);
+        for(int i=0;i<MiniAiGoals.TITLES.length;i++){
+            int percent = MiniAiGoals.percent(this,i);
+            LinearLayout row = new LinearLayout(this);
+            row.setOrientation(LinearLayout.VERTICAL);
+            row.setPadding(dp(12),dp(9),dp(12),dp(9));
+            row.setBackground(rounded(Color.WHITE,14));
+            LinearLayout.LayoutParams rowLp = new LinearLayout.LayoutParams(
+                    LinearLayout.LayoutParams.MATCH_PARENT,LinearLayout.LayoutParams.WRAP_CONTENT);
+            rowLp.setMargins(0,0,0,dp(8));
+            row.setLayoutParams(rowLp);
 
-            goalsRoot.addView(text((i + 1) + ". " + MiniAiGoals.TITLES[i]
-                    + " · " + percent + "% · " + status, 15, true));
+            LinearLayout line = new LinearLayout(this);
+            line.setOrientation(LinearLayout.HORIZONTAL);
+            line.setGravity(Gravity.CENTER_VERTICAL);
 
-            ProgressBar bar = new ProgressBar(this, null, android.R.attr.progressBarStyleHorizontal);
+            TextView number = text(String.valueOf(i+1),14,true);
+            number.setGravity(Gravity.CENTER);
+            number.setBackground(rounded(Color.rgb(235,245,255),12));
+            line.addView(number,new LinearLayout.LayoutParams(dp(42),dp(38)));
+
+            TextView title = text(MiniAiGoals.TITLES[i],14,true);
+            title.setPadding(dp(10),0,dp(8),0);
+            line.addView(title,new LinearLayout.LayoutParams(
+                    0,LinearLayout.LayoutParams.WRAP_CONTENT,1));
+
+            TextView pct = text(percent + "%",13,true);
+            line.addView(pct,new LinearLayout.LayoutParams(
+                    LinearLayout.LayoutParams.WRAP_CONTENT,LinearLayout.LayoutParams.WRAP_CONTENT));
+            row.addView(line);
+
+            ProgressBar bar = new ProgressBar(this,null,android.R.attr.progressBarStyleHorizontal);
             bar.setMax(100);
             bar.setProgress(percent);
-            bar.setPadding(22, 0, 22, 4);
-            goalsRoot.addView(bar, new LinearLayout.LayoutParams(
-                    LinearLayout.LayoutParams.MATCH_PARENT, dp(18)));
+            row.addView(bar,new LinearLayout.LayoutParams(
+                    LinearLayout.LayoutParams.MATCH_PARENT,dp(12)));
 
-            goalsRoot.addView(text(MiniAiGoals.DESCRIPTIONS[i], 13, false));
-            goalsRoot.addView(text("Verifica: " + MiniAiGoals.evidence(this, i), 12, false));
+            TextView status = text(MiniAiGoals.status(this,i),12,false);
+            status.setGravity(Gravity.END);
+            row.addView(status);
+            goalsRoot.addView(row);
         }
     }
 
