@@ -577,14 +577,14 @@ struct Dataset {
             std::string p; p+=a; p+=b; p+=c; p+=a;
             positives.push_back(p);
 
-            const int n=static_cast<int>(symbols.size());
-            int ai=static_cast<int>(a-'a') % n;
-            int bi=static_cast<int>(b-'a') % n;
-            int ci=static_cast<int>(c-'a') % n;
-            char z=symbols[(ai + 1 + (bi + ci) % (n - 1)) % n];
-            if(z==a) z=symbols[(ai + 1) % n];
-            std::string n; n+=a; n+=b; n+=c; n+=z;
-            negatives.push_back(n);
+            const int alphabetSize=static_cast<int>(symbols.size());
+            int ai=static_cast<int>(a-'a') % alphabetSize;
+            int bi=static_cast<int>(b-'a') % alphabetSize;
+            int ci=static_cast<int>(c-'a') % alphabetSize;
+            char z=symbols[(ai + 1 + (bi + ci) % (alphabetSize - 1)) % alphabetSize];
+            if(z==a) z=symbols[(ai + 1) % alphabetSize];
+            std::string neg; neg+=a; neg+=b; neg+=c; neg+=z;
+            negatives.push_back(neg);
         }
 
         std::mt19937 r(seed);
