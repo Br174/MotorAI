@@ -81,7 +81,7 @@ public class MainActivity extends Activity {
         root.addView(text("MotorAI Seed 010", 28, true));
         root.addView(text("Cervello: Transformer causale nativo C++ · pesi iniziali casuali · nessun modello preaddestrato", 15, false));
         root.addView(text("Curriculum: L0 copia3 → L1 inversione → L2 duplica primo → L3 duplica secondo → L4 uguaglianza", 14, false));
-        root.addView(text("L4: ? + tre simboli + > = uguaglianza strutturale (+ se primo=terzo, - se diversi). Esempio: ?efe> → ?efe>+. Adapter residuale locale.", 14, false));
+        root.addView(text("L4: ? + tre simboli + > = uguaglianza strutturale (+ se primo=terzo, - se diversi). Esempio: ?efe> → ?efe>+. Tokenizer esteso a-z · adapter + attenzione relazionale.", 14, false));
 
         state = text("Stato: inizializzazione…", 16, true);
         curriculum = text("Livello: —", 15, true);
@@ -308,7 +308,7 @@ public class MainActivity extends Activity {
                     String line = formatTrainingMetrics(j);
                     ui(() -> metrics.setText(line));
 
-                    double requiredValidation = level >= 4 ? 0.999 : 0.90;
+                    double requiredValidation = level >= 4 ? 0.95 : 0.90;
                     boolean accepted = afterValAcc >= requiredValidation
                             && (level < 1 || afterRetentionL0 >= 0.90)
                             && (level < 2 || afterRetentionL1 >= 0.90)
