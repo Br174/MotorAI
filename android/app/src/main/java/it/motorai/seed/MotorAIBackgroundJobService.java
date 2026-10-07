@@ -62,7 +62,7 @@ public class MotorAIBackgroundJobService extends JobService {
 
     private void runOneCycle() throws Exception {
         SharedPreferences runtime = getSharedPreferences("motorai_runtime", MODE_PRIVATE);
-        if (runtime.getBoolean("ui_active", false)) {
+        if (MainActivity.isUiActive()) {
             sendCurrentTelemetry("background_skip_ui_active");
             return;
         }
