@@ -84,12 +84,19 @@ public final class MotorAIBridgeClient {
             out.put("l5Accepted", evo.getBoolean("l5_accepted", false));
             out.put("lastProgress", evo.getString("last_progress", "nessuno"));
 
+            MiniAiGoals.seedIfNeeded(context);
+            out.put("miniAiGoal1Percent", MiniAiGoals.percent(context, 0));
+            out.put("miniAiTotalPercent", MiniAiGoals.totalPercent(context));
+            out.put("miniAiCompletedGoals", MiniAiGoals.completedCount(context));
+            out.put("miniAiGoal1Status", MiniAiGoals.status(context, 0));
+            out.put("miniAiGoal1Evidence", MiniAiGoals.evidence(context, 0));
+
             SharedPreferences diag = context.getSharedPreferences("motorai_diagnostics", Context.MODE_PRIVATE);
             String failures = diag.getString("failures", "");
             out.put("failures", failures == null ? "" : failures);
             out.put("status", status == null ? "" : status);
             out.put("deviceTimestamp", System.currentTimeMillis());
-            out.put("bridgeVersion", 1);
+            out.put("bridgeVersion", 2);
             out.put("$process_person_profile", false);
         } catch (Exception ignored) {
         }
