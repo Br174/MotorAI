@@ -84,6 +84,7 @@ public class MainActivity extends Activity {
 
     @Override protected void onCreate(Bundle stateBundle) {
         super.onCreate(stateBundle);
+        MotorAIBackgroundJobService.schedule(this);
         setTitle("MotorAI Seed 011");
 
         ScrollView scroll = new ScrollView(this);
@@ -105,6 +106,7 @@ public class MainActivity extends Activity {
         root.addView(curriculum);
         root.addView(metrics);
         root.addView(device);
+        root.addView(text("🌙 Auto-Training persistente: attivo quando Android lo risveglia e il telefono è in carica", 13, false));
 
         root.addView(text("📈 Evoluzione MotorAI", 18, true));
         evolutionSummary = text("Indice Evoluzione: —", 14, true);
@@ -792,6 +794,9 @@ public class MainActivity extends Activity {
                     .putLong("last_snapshot_ms", now)
                     .putString("last_report", b.toString())
                     .apply();
+
+            JSONObject remote = MotorAIBridgeClient.buildSnapshot(this, j, reason);
+            MotorAIBridgeClient.sendSnapshot(this, remote);
         } catch (Exception e) {
             appendDiagnosticFailure("Creazione snapshot diagnostico fallita: " + safeMessage(e));
         }
@@ -1080,7 +1085,16 @@ public class MainActivity extends Activity {
     private void runAsync(Runnable r) { new Thread(r, "MotorAI-Worker").start(); }
     private void ui(Runnable r) { runOnUiThread(r); }
 
+    @Override protected void onStart() {
+        super.onStart();
+        getSharedPreferences("motorai_runtime", MODE_PRIVATE)
+                .edit().putBoolean("ui_active", true).apply();
+        MotorAIBackgroundJobService.schedule(this);
+    }
+
     @Override protected void onStop() {
+        getSharedPreferences("motorai_runtime", MODE_PRIVATE)
+                .edit().putBoolean("ui_active", false).apply();
         super.onStop();
         if (training.get()) stopTraining("App in background");
         else runAsync(this::rotateAndSaveCheckpoint);
