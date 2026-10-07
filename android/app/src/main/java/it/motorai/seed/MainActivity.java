@@ -1109,8 +1109,8 @@ public class MainActivity extends Activity {
             learningNow.setText("🔄 Cosa sta facendo adesso: si sta allenando e controlla a ogni piccolo blocco "
                     + "di non dimenticare ciò che aveva già imparato.");
         } else if (level >= 5 && l5Accepted) {
-            learningNow.setText("🔄 Cosa sta facendo adesso: l'ultimo esercizio è finito con successo. "
-                    + "In questo momento è ferma e pronta per il prossimo esercizio.");
+            learningNow.setText("🔄 Cosa sta facendo adesso: le fondamenta L0-L5 sono concluse. "
+                    + "È pronta a iniziare il primo obiettivo del percorso Mini-AI.");
         } else if (level >= 5) {
             learningNow.setText("🔄 Cosa sta facendo adesso: sta imparando a confrontare due simboli "
                     + "ignorando quello che non serve.");
@@ -1121,8 +1121,8 @@ public class MainActivity extends Activity {
         latestProgress.setText("🧠 Cosa ha imparato:\n" + capabilityList(acceptedLevel));
 
         if (level >= 5 && l5Accepted) {
-            nextGoal.setText("🎯 Prossimo passo: preparare un nuovo esercizio più difficile, "
-                    + "senza perdere ciò che sa già fare.");
+            nextGoal.setText("🎯 Prossimo passo: Obiettivo Mini-AI 1/10 — "
+                    + "capire una richiesta normale in italiano.");
         } else if (level >= 5) {
             nextGoal.setText("🎯 Prossimo passo: completare questo esercizio e superare il controllo finale.");
         } else {
