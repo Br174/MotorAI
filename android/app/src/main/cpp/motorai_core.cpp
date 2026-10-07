@@ -579,39 +579,36 @@ struct Dataset {
         deterministicShuffle(te,r);
     }
     static void buildEdgeEquality4(uint32_t seed,std::vector<Example>&tr,std::vector<Example>&va,std::vector<Example>&te){
-        // Auto-Training V1 starts on the historical base alphabet a-i.
-        // The same relation will expand to a-z only after this stage is consolidated.
-        std::string symbols="abcdefghi";
+        // Auto-Training V1, gradino A:
+        // estremi da a-e, due distrattori centrali da a-i.
+        // Il modello deve generalizzare la relazione primo==ultimo, non memorizzare sequenze.
+        std::string ends="abcde";
+        std::string middle="abcdefghi";
         std::vector<std::string> positives,negatives;
 
-        // L5: su quattro simboli, classifica se primo == ultimo.
-        for(char a:symbols) for(char b:symbols) for(char c:symbols){
-            std::string p; p+=a; p+=b; p+=c; p+=a;
+        for(char a:ends) for(char b:middle) for(char cc:middle){
+            std::string p; p+=a; p+=b; p+=cc; p+=a;
             positives.push_back(p);
-
-            const int alphabetSize=static_cast<int>(symbols.size());
-            int ai=static_cast<int>(a-'a') % alphabetSize;
-            int bi=static_cast<int>(b-'a') % alphabetSize;
-            int ci=static_cast<int>(c-'a') % alphabetSize;
-            char z=symbols[(ai + 1 + (bi + ci) % (alphabetSize - 1)) % alphabetSize];
-            if(z==a) z=symbols[(ai + 1) % alphabetSize];
-            std::string neg; neg+=a; neg+=b; neg+=c; neg+=z;
-            negatives.push_back(neg);
+            for(char z:ends) if(z!=a){
+                std::string n; n+=a; n+=b; n+=cc; n+=z;
+                negatives.push_back(n);
+            }
         }
 
         std::mt19937 r(seed);
         deterministicShuffle(positives,r);
         deterministicShuffle(negatives,r);
+        negatives.resize(positives.size()); // 405 positivi + 405 negativi.
 
         auto append=[&](const std::string& q,char label,std::vector<Example>& dst){
             std::string out(1,label);
-            dst.push_back(encode("?"+q+">"+out+"\n"));
+            dst.push_back(encode("!"+q+">"+out+"\n"));
         };
 
-        // Split bilanciato e disgiunto: 800 train, 200 validation, 200 test.
-        for(size_t i=0;i<600;++i){
-            if(i<400){ append(positives[i],'+',tr); append(negatives[i],'-',tr); }
-            else if(i<500){ append(positives[i],'+',va); append(negatives[i],'-',va); }
+        // Split stratificato e disgiunto: 600 train, 100 validation, 110 test.
+        for(size_t i=0;i<positives.size();++i){
+            if(i<300){ append(positives[i],'+',tr); append(negatives[i],'-',tr); }
+            else if(i<350){ append(positives[i],'+',va); append(negatives[i],'-',va); }
             else { append(positives[i],'+',te); append(negatives[i],'-',te); }
         }
         deterministicShuffle(tr,r);
@@ -681,7 +678,7 @@ struct Dataset {
         }
 
         // Livello 5: Auto-Training V1. Uguaglianza strutturale primo/ultimo su 4 simboli.
-        // Segmenti: L5=800, L4=160, L3=48, L2=48, L1=48, L0=72.
+        // Segmenti: L5=600, L4=160, L3=48, L2=48, L1=48, L0=72.
         train=l5tr; val=l5va; test=l5te;
         for(size_t i=0;i<160 && i<l4tr.size();++i) train.push_back(l4tr[i]);
         for(size_t i=0;i<48 && i<l3tr.size();++i) train.push_back(l3tr[i]);
@@ -741,7 +738,7 @@ TrainResult Engine::train(int steps,int batch,float lr){
     auto t0=std::chrono::steady_clock::now();
     std::mt19937 r(impl_->seed+1+impl_->step);
     int done=0;
-    float effective_lr=(impl_->curriculum>=4)?lr:((impl_->curriculum>=3)?lr*0.65f:((impl_->curriculum>=2)?lr*0.75f:lr));
+    float effective_lr=(impl_->curriculum>=5)?lr*2.0f:((impl_->curriculum>=4)?lr:((impl_->curriculum>=3)?lr*0.65f:((impl_->curriculum>=2)?lr*0.75f:lr)));
 
     for(int s=0;s<steps;++s){
         if(impl_->pause.load()) break;
@@ -771,15 +768,10 @@ TrainResult Engine::train(int steps,int batch,float lr){
                 else if(b < 18) idx=1140+deterministicIndex(r,48);
                 else if(b < 21) idx=1188+deterministicIndex(r,48);
                 else idx=1236+deterministicIndex(r,72);
-            }else if(impl_->curriculum>=5 && impl_->data.train.size()>=1176){
-                // Auto-Training L5: 10/24 L5, 8/24 L4, 2/24 L3, 2/24 L2, 1/24 L1, 1/24 L0.
-                // Il cervello Seed010 è congelato; il replay insegna a grow3 a non alterarne le decisioni.
-                if(b < 10) idx=deterministicIndex(r,800);
-                else if(b < 18) idx=800+deterministicIndex(r,160);
-                else if(b < 20) idx=960+deterministicIndex(r,48);
-                else if(b < 22) idx=1008+deterministicIndex(r,48);
-                else if(b < 23) idx=1056+deterministicIndex(r,48);
-                else idx=1104+deterministicIndex(r,72);
+            }else if(impl_->curriculum>=5 && impl_->data.train.size()>=976){
+                // L5 is fully isolated: train 100% on the new task.
+                // Retention is still measured after every chunk as a hard safety gate.
+                idx=deterministicIndex(r,600);
             }else{
                 idx=deterministicIndex(r,impl_->data.train.size());
             }
