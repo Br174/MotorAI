@@ -182,8 +182,114 @@ public class MotorAIBackgroundJobService extends JobService {
                     && readGuard().allowed;
         }
 
+        if (level >= 5 && l5Accepted && MiniAiGoals.percent(this, 0) < 100) {
+            long wakeStarted = System.currentTimeMillis();
+            for (int chunk = 0; chunk < MAX_CHUNKS_PER_WAKE; chunk++) {
+                if (MainActivity.isUiActive()) {
+                    sendCurrentTelemetry("background_goal1_pause_ui_active");
+                    return false;
+                }
+                Guard chunkGuard = readGuard();
+                if (!chunkGuard.allowed) {
+                    sendCurrentTelemetry("background_goal1_pause_" + chunkGuard.reason);
+                    return false;
+                }
+                if (!runGoal1Chunk(runtime)) return false;
+                if (MiniAiGoals.percent(this, 0) >= 100) return false;
+                if (System.currentTimeMillis() - wakeStarted >= MAX_WAKE_MS) break;
+            }
+            sendCurrentTelemetry("background_goal1_burst_checkpoint");
+            return !MainActivity.isUiActive()
+                    && MiniAiGoals.percent(this, 0) < 100
+                    && readGuard().allowed;
+        }
+
         sendCurrentTelemetry("background_idle_consolidated");
         return false;
+    }
+
+    private int goal1Percent(double accuracy) {
+        final double chance = 0.20;
+        if (!Double.isFinite(accuracy) || accuracy <= chance) return 0;
+        return Math.max(0, Math.min(99,
+                (int)Math.round(((accuracy - chance) / (1.0 - chance)) * 99.0)));
+    }
+
+    private boolean runGoal1Chunk(SharedPreferences runtime) throws Exception {
+        JSONObject before = new JSONObject(MainActivity.nativeGoal1Evaluate());
+        double beforeAcc = before.optDouble("validation_accuracy", 0.0);
+
+        if (!rotateAndSave()) {
+            appendFailure("Background Goal1: checkpoint pre-chunk non disponibile");
+            return false;
+        }
+
+        JSONObject after = new JSONObject(MainActivity.nativeGoal1TrainChunk(20));
+        double validation = after.optDouble("validation_accuracy", 0.0);
+        int goalStep = after.optInt("goal1_step", 0);
+
+        if (validation + 0.20 < beforeAcc) {
+            MainActivity.nativeLoadCheckpoint(checkpoint("current").getAbsolutePath());
+            runtime.edit().putInt("goal1_stable_passes", 0).apply();
+            appendFailure("Background Goal1: regressione forte · rollback automatico");
+            sendCurrentTelemetry("background_goal1_rollback_regression");
+            return false;
+        }
+
+        if (!rotateAndSave()) {
+            MainActivity.nativeLoadCheckpoint(checkpoint("current").getAbsolutePath());
+            appendFailure("Background Goal1: salvataggio post-chunk fallito");
+            return false;
+        }
+
+        int measured = goal1Percent(validation);
+        int best = Math.max(MiniAiGoals.percent(this, 0), measured);
+        MiniAiGoals.updateGoal(this, 0, best, String.format(Locale.ITALY,
+                "Validation %.1f%% · step obiettivo %d", validation * 100.0, goalStep));
+
+        JSONObject foundation = new JSONObject(MainActivity.nativeEvaluate());
+        double memory = min(retentions(foundation)) * 100.0;
+        int foundationStep = foundation.optInt("step", 3100);
+        EvolutionHistory.recordMiniAi(this, foundationStep, goalStep,
+                best, memory, MiniAiGoals.totalPercent(this),
+                "Mini-AI 1 · " + best + "%",
+                "Comprensione di richieste semplici in italiano");
+
+        appendProgress("Mini-AI 1/10 · " + best + "% · step obiettivo " + goalStep);
+
+        int stable = validation >= 0.90
+                ? runtime.getInt("goal1_stable_passes", 0) + 1 : 0;
+        runtime.edit().putInt("goal1_stable_passes", stable).apply();
+
+        if (stable >= 4) {
+            JSONObject fin = new JSONObject(MainActivity.nativeGoal1FinalTest());
+            double test = fin.optDouble("test_accuracy", 0.0);
+            if (test >= 0.90) {
+                MiniAiGoals.updateGoal(this, 0, 100, String.format(Locale.ITALY,
+                        "TEST separato superato: %.1f%% · step obiettivo %d",
+                        test * 100.0, goalStep));
+                rotateAndSave();
+                EvolutionHistory.recordMiniAi(this, foundationStep, goalStep,
+                        100.0, memory, MiniAiGoals.totalPercent(this),
+                        "Mini-AI 1 completato",
+                        "TEST separato superato: comprende l'intento di richieste semplici.");
+                runtime.edit().putInt("goal1_stable_passes", 0).apply();
+                appendProgress(String.format(Locale.ITALY,
+                        "Mini-AI 1/10 completato · TEST %.1f%%", test * 100.0));
+                sendCurrentTelemetry("background_miniai_goal1_completed");
+                return false;
+            }
+            runtime.edit().putInt("goal1_stable_passes", 0).apply();
+        }
+
+        if (goalStep >= 2500) {
+            appendFailure("Background Goal1: limite di sicurezza 2500 step raggiunto");
+            sendCurrentTelemetry("background_goal1_safety_limit");
+            return false;
+        }
+
+        sendCurrentTelemetry("background_training_miniai_goal1");
+        return true;
     }
 
     private boolean runLevel5Chunk(SharedPreferences runtime, SharedPreferences evo) throws Exception {

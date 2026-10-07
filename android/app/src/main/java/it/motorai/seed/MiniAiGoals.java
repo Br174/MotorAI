@@ -97,6 +97,14 @@ public final class MiniAiGoals {
         return n;
     }
 
+    public static int activeGoalIndex(Context context) {
+        seedIfNeeded(context);
+        for (int i = 0; i < TITLES.length; i++) {
+            if (percent(context, i) < 100) return i;
+        }
+        return TITLES.length - 1;
+    }
+
     public static String status(Context context, int index) {
         int p = percent(context, index);
         if (p >= 100) return "completato";

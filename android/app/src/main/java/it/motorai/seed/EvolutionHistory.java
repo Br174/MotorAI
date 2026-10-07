@@ -62,6 +62,23 @@ public final class EvolutionHistory {
         }
     }
 
+    public static synchronized void recordMiniAi(Context context, int foundationStep, int goalStep,
+                                                     double goalPercent, double memoryPercent,
+                                                     double totalMiniAiPercent, String label, String capability) {
+        try {
+            seedIfNeeded(context);
+            int syntheticStep = foundationStep + Math.max(0, goalStep);
+            try (FileWriter w = new FileWriter(file(context), true)) {
+                write(w, System.currentTimeMillis(), syntheticStep,
+                        Math.max(0.0, Math.min(100.0, goalPercent)),
+                        Math.max(0.0, Math.min(100.0, memoryPercent)),
+                        Math.max(0.0, Math.min(100.0, totalMiniAiPercent)),
+                        label, capability);
+            }
+        } catch (Exception ignored) {
+        }
+    }
+
     public static synchronized void recordCurrentIfChanged(Context context, JSONObject j, boolean useTest,
                                                            String label, String capability) {
         int step = j.optInt("step", 0);
