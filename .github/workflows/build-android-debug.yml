@@ -57,7 +57,7 @@ jobs:
       - name: Upload MotorAI APK
         uses: actions/upload-artifact@v6
         with:
-          name: MotorAI-Seed010-debug
+          name: MotorAI-Seed011-debug
           path: android/app/build/outputs/apk/debug/*.apk
           if-no-files-found: error
           retention-days: 14
@@ -79,3 +79,5 @@ jobs:
 # Seed010 minimum final gate trigger
 
 # Seed010 tokenizer final gate trigger
+
+# Seed011 Auto-Training V1 gate
