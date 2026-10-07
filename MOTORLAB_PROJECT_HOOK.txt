@@ -11,3 +11,9 @@ SPECIALIZED_SATELLITE=MotorLab-Training
 CENTRAL_MUTATION_POLICY=do-not-auto-propagate-motorai-specific-training-innovations
 PROJECT_CONTINUITY=MOTORLAB_PROJECT_STATE_MOTORAI_V1.txt
 POLLICINO=external-control-plane-only
+
+MANDATORY VERSIONED SESSION BANNER
+First user-visible line of every project chat must be exactly `⚙️ MotorLab rNN attivo`, where rNN matches the pinned MotorLab session release. Unversioned startup is invalid.
+
+MOTORLAB_VERSIONED_BOOT_BANNER=required
+MOTORLAB_ALL_PROJECTS_REQUIRED=required
