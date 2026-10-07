@@ -577,8 +577,12 @@ struct Dataset {
             std::string p; p+=a; p+=b; p+=c; p+=a;
             positives.push_back(p);
 
-            char z=symbols[(static_cast<int>(a-'a') + 1 + static_cast<int>((b-'a')+(c-'a'))%25)%26];
-            if(z==a) z=symbols[(static_cast<int>(a-'a')+1)%26];
+            const int n=static_cast<int>(symbols.size());
+            int ai=static_cast<int>(a-'a') % n;
+            int bi=static_cast<int>(b-'a') % n;
+            int ci=static_cast<int>(c-'a') % n;
+            char z=symbols[(ai + 1 + (bi + ci) % (n - 1)) % n];
+            if(z==a) z=symbols[(ai + 1) % n];
             std::string n; n+=a; n+=b; n+=c; n+=z;
             negatives.push_back(n);
         }
