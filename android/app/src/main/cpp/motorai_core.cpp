@@ -379,7 +379,7 @@ public:
         Tensor gd=linear(gh,"grow1.fc2.w","grow1.fc2.b");
         Tensor xg=add(xa,gd);
 
-        Tensor zf=layerNorm(xg3,P("lnf.g"),P("lnf.b"));
+        Tensor zf=layerNorm(xg,P("lnf.g"),P("lnf.b"));
         Tensor logits=matmul(zf,P("head.w"));
 
         if(l5control){
