@@ -1727,17 +1727,26 @@ public:
         return (k>=0&&k<CLASSES)?names[k]:"unknown";
     }
 
+    static int numberWord(const std::string& x){
+        static const char* names[]={"zero","uno","due","tre","quattro","cinque","sei","sette","otto","nove",
+            "dieci","undici","dodici","tredici","quattordici","quindici","sedici","diciassette","diciotto","diciannove","venti"};
+        for(int i=0;i<=20;++i) if(x==names[i]) return i;
+        return -1;
+    }
+
     static bool extractThree(const std::string& text,int& a,int& b,int& c){
         std::vector<int> nums;
-        std::string s=normalizeItalian(text);
-        for(size_t i=0;i<s.size();){
-            if(std::isdigit(static_cast<unsigned char>(s[i]))){
-                int v=0;
-                while(i<s.size()&&std::isdigit(static_cast<unsigned char>(s[i]))){
-                    v=v*10+(s[i]-'0'); ++i;
-                }
-                nums.push_back(v);
-            }else ++i;
+        std::istringstream in(normalizeItalian(text));
+        std::string token;
+        while(in>>token){
+            bool digits=!token.empty();
+            for(char ch:token) if(ch<'0'||ch>'9'){digits=false;break;}
+            if(digits){
+                try{nums.push_back(std::stoi(token));}catch(...){}
+            }else{
+                int v=numberWord(token);
+                if(v>=0) nums.push_back(v);
+            }
         }
         if(nums.size()<3) return false;
         a=nums[0];b=nums[1];c=nums[2];
