@@ -45,6 +45,11 @@ jobs:
           grep -q "RANGE_HOUR_MS" android/app/src/main/java/it/motorai/seed/MainActivity.java
           grep -q "EvolutionHistory.record" android/app/src/main/java/it/motorai/seed/MotorAIBackgroundJobService.java
           grep -q "setTimeAxis" android/app/src/main/java/it/motorai/seed/EvolutionView.java
+          grep -q "Cosa sta facendo adesso" android/app/src/main/java/it/motorai/seed/MainActivity.java
+          grep -q "Apri i 10 obiettivi" android/app/src/main/java/it/motorai/seed/MainActivity.java
+          grep -q "class MiniAiGoalsActivity" android/app/src/main/java/it/motorai/seed/MiniAiGoalsActivity.java
+          grep -q "totalPercent" android/app/src/main/java/it/motorai/seed/MiniAiGoals.java
+          grep -q "MiniAiGoalsActivity" android/app/src/main/AndroidManifest.xml
 
       - name: Set up JDK 17
         uses: actions/setup-java@v5

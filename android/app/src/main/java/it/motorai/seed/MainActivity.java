@@ -58,6 +58,8 @@ public class MainActivity extends Activity {
     private TextView capabilityNow;
     private TextView learningNow;
     private TextView latestProgress;
+    private TextView nextGoal;
+    private TextView miniAiSummary;
     private TextView liveIndicator;
     private TextView evolutionRangeLabel;
     private static final long DIAGNOSTIC_INTERVAL_MS = 20L * 60L * 1000L;
@@ -179,12 +181,19 @@ public class MainActivity extends Activity {
         rangeYear.setOnClickListener(v -> setEvolutionRange(RANGE_YEAR_MS, "Ultimo anno"));
         rangeAll.setOnClickListener(v -> setEvolutionRange(-1L, "Tutto"));
 
-        capabilityNow = text("🧠 Cosa sa fare adesso: —", 15, true);
-        learningNow = text("🔄 Cosa sta imparando: —", 14, false);
-        latestProgress = text("🎆 Ultimo progresso: —", 14, false);
+        capabilityNow = text("📍 Dove siamo arrivati: —", 15, true);
+        learningNow = text("🔄 Cosa sta facendo adesso: —", 14, false);
+        latestProgress = text("🧠 Cosa ha imparato: —", 14, false);
+        nextGoal = text("🎯 Prossimo passo: —", 14, true);
         root.addView(capabilityNow);
         root.addView(learningNow);
         root.addView(latestProgress);
+        root.addView(nextGoal);
+
+        miniAiSummary = text("🎯 Percorso Mini-AI: —", 15, true);
+        root.addView(miniAiSummary);
+        Button miniAiGoals = button("🎯 Apri i 10 obiettivi");
+        root.addView(miniAiGoals);
 
         Button diagnostics = button("🩺 Diagnostica");
         root.addView(diagnostics);
@@ -232,6 +241,8 @@ public class MainActivity extends Activity {
         root.addView(reset);
 
         autoTrain.setOnClickListener(v -> startAutoTraining());
+        miniAiGoals.setOnClickListener(v ->
+                startActivity(new Intent(this, MiniAiGoalsActivity.class)));
         diagnostics.setOnClickListener(v -> openDiagnostics());
         learn.setOnClickListener(v -> startTraining());
         pause.setOnClickListener(v -> stopTraining("Pausa richiesta"));
@@ -1052,13 +1063,13 @@ public class MainActivity extends Activity {
     }
 
     private String capabilityList(int acceptedLevel) {
-        StringBuilder b = new StringBuilder("🧠 Cosa sa fare adesso");
-        if (acceptedLevel >= 0) b.append("\n✅ Copiare una sequenza breve");
-        if (acceptedLevel >= 1) b.append("\n✅ Invertire una coppia di simboli");
-        if (acceptedLevel >= 2) b.append("\n✅ Selezionare e duplicare il primo simbolo");
-        if (acceptedLevel >= 3) b.append("\n✅ Selezionare e duplicare il secondo simbolo");
-        if (acceptedLevel >= 4) b.append("\n✅ Riconoscere un'uguaglianza strutturale a distanza");
-        if (acceptedLevel >= 5) b.append("\n✅ Confrontare i primi due simboli a/b ignorando distrattori a–z nuovi");
+        StringBuilder b = new StringBuilder();
+        if (acceptedLevel >= 0) b.append("✅ Copiare una sequenza breve");
+        if (acceptedLevel >= 1) b.append("\n✅ Mettere due simboli al contrario");
+        if (acceptedLevel >= 2) b.append("\n✅ Scegliere e ripetere il primo simbolo");
+        if (acceptedLevel >= 3) b.append("\n✅ Scegliere e ripetere il secondo simbolo");
+        if (acceptedLevel >= 4) b.append("\n✅ Capire se due parti corrispondono anche quando sono lontane");
+        if (acceptedLevel >= 5) b.append("\n✅ Confrontare due simboli anche quando c'è in mezzo qualcosa che non serve");
         return b.toString();
     }
 
@@ -1067,7 +1078,6 @@ public class MainActivity extends Activity {
         boolean l5Accepted = getSharedPreferences("motorai_evolution", MODE_PRIVATE)
                 .getBoolean("l5_accepted", false);
         int acceptedLevel = level >= 5 && !l5Accepted ? 4 : Math.min(level, 5);
-
         double learning = finalMetric && j.has("test_accuracy")
                 ? j.optDouble("test_accuracy", 0.0)
                 : j.optDouble("val_accuracy", 0.0);
@@ -1078,22 +1088,52 @@ public class MainActivity extends Activity {
         evolutionSummary.setText(String.format(Locale.ITALY,
                 "Indice Evoluzione: %.1f/100 · Memoria min.: %.1f%% · Parametri: %,d\n(indice interno, non è un QI)",
                 evo, memory * 100.0, params));
-        capabilityNow.setText(capabilityList(acceptedLevel));
+        int step = j.optInt("step", 0);
+        int startStep = j.optInt("curriculum_start_step", step);
+        int levelSteps = Math.max(0, step - startStep);
 
-        if (level < 5) {
-            learningNow.setText("🔄 Cosa sta imparando: Auto-Training pronto per scegliere il prossimo livello.");
-        } else if (!l5Accepted) {
-            learningNow.setText("🔄 Cosa sta imparando: riconoscere se i primi due simboli a/b coincidono ignorando distrattori a–z mai visti.");
+        String reached;
+        if (level >= 5 && l5Accepted) {
+            reached = "📍 Dove siamo arrivati: ha completato il quinto livello di apprendimento. "
+                    + "Passi totali " + step + " · ultimo livello " + levelSteps + " passi.";
+        } else if (level >= 5) {
+            reached = "📍 Dove siamo arrivati: sta lavorando sul quinto livello. "
+                    + "Passi totali " + step + " · questo livello " + levelSteps + " passi.";
         } else {
-            learningNow.setText("🔄 Cosa sta imparando: L5 consolidato; prossimo curriculum in preparazione.");
+            reached = "📍 Dove siamo arrivati: ha raggiunto il livello " + level
+                    + " con " + step + " passi totali.";
+        }
+        capabilityNow.setText(reached);
+
+        if (training.get()) {
+            learningNow.setText("🔄 Cosa sta facendo adesso: si sta allenando e controlla a ogni piccolo blocco "
+                    + "di non dimenticare ciò che aveva già imparato.");
+        } else if (level >= 5 && l5Accepted) {
+            learningNow.setText("🔄 Cosa sta facendo adesso: le fondamenta L0-L5 sono concluse. "
+                    + "È pronta a iniziare il primo obiettivo del percorso Mini-AI.");
+        } else if (level >= 5) {
+            learningNow.setText("🔄 Cosa sta facendo adesso: sta imparando a confrontare due simboli "
+                    + "ignorando quello che non serve.");
+        } else {
+            learningNow.setText("🔄 Cosa sta facendo adesso: è pronta a continuare l'apprendimento automatico.");
         }
 
-        String p = explicitProgress;
-        if (p == null || p.isEmpty()) {
-            p = getSharedPreferences("motorai_evolution", MODE_PRIVATE)
-                    .getString("last_progress", "Seed 010 consolidata: Auto-Training V1 pronto.");
+        latestProgress.setText("🧠 Cosa ha imparato:\n" + capabilityList(acceptedLevel));
+
+        if (level >= 5 && l5Accepted) {
+            nextGoal.setText("🎯 Prossimo passo: Obiettivo Mini-AI 1/10 — "
+                    + "capire una richiesta normale in italiano.");
+        } else if (level >= 5) {
+            nextGoal.setText("🎯 Prossimo passo: completare questo esercizio e superare il controllo finale.");
+        } else {
+            nextGoal.setText("🎯 Prossimo passo: completare il livello attuale e passare al successivo.");
         }
-        latestProgress.setText("🎆 Ultimo progresso: " + p);
+
+        MiniAiGoals.seedIfNeeded(this);
+        if (miniAiSummary != null) {
+            miniAiSummary.setText("🎯 " + MiniAiGoals.summary(this)
+                    + "\nFondamenta neurali L0-L5: completate ✅");
+        }
     }
 
     private boolean rotateAndSaveCheckpoint() {
