@@ -1520,6 +1520,245 @@ public:
     }
 };
 
+
+struct Goal4Example {
+    std::string text;
+    int label = 0;
+};
+
+struct Goal4Dataset {
+    std::vector<Goal4Example> train, val, test;
+
+    static void add(std::vector<Goal4Example>& dst,int label,std::initializer_list<const char*> values){
+        for(const char* s:values) dst.push_back({s,label});
+    }
+
+    explicit Goal4Dataset(uint32_t seed){
+        // 0 add_add, 1 add_sub, 2 sub_add, 3 sub_sub,
+        // 4 mul_add, 5 mul_sub, 6 add_mul, 7 sub_mul.
+        add(train,0,{
+            "parto da 3 aggiungo 4 poi aggiungo 2",
+            "ho 5 ricevo 2 e poi ricevo 6",
+            "inizio con 7 sommo 3 poi sommo 4",
+            "parto da 10 aggiungo 5 e infine aggiungo 1",
+            "ho 2 aumento di 8 poi aumento di 3",
+            "inizio da 6 ricevo 4 poi ricevo 5"
+        });
+        add(val,0,{"parto da 4 aggiungo 3 poi aggiungo 7","ho 8 ricevo 2 poi ricevo 1"});
+        add(test,0,{"inizio con 9 sommo 4 poi sommo 2","parto da 1 aumento di 5 poi aumento di 6"});
+
+        add(train,1,{
+            "parto da 10 aggiungo 3 poi tolgo 4",
+            "ho 8 ricevo 5 e poi perdo 2",
+            "inizio con 12 sommo 4 poi sottraggo 3",
+            "parto da 7 aggiungo 6 e infine tolgo 5",
+            "ho 15 aumento di 2 poi diminuisco di 4",
+            "inizio da 9 ricevo 3 poi spendo 2"
+        });
+        add(val,1,{"parto da 11 aggiungo 5 poi tolgo 3","ho 6 ricevo 4 poi perdo 2"});
+        add(test,1,{"inizio con 13 sommo 2 poi sottraggo 6","parto da 8 aumento di 7 poi diminuisco di 5"});
+
+        add(train,2,{
+            "parto da 10 tolgo 3 poi aggiungo 4",
+            "ho 12 perdo 5 e poi ricevo 6",
+            "inizio con 15 sottraggo 4 poi sommo 2",
+            "parto da 9 tolgo 2 e infine aggiungo 7",
+            "ho 14 diminuisco di 6 poi aumento di 3",
+            "inizio da 11 spendo 4 poi ricevo 5"
+        });
+        add(val,2,{"parto da 16 tolgo 5 poi aggiungo 2","ho 13 perdo 3 poi ricevo 4"});
+        add(test,2,{"inizio con 18 sottraggo 7 poi sommo 3","parto da 12 diminuisco di 4 poi aumento di 8"});
+
+        add(train,3,{
+            "parto da 15 tolgo 4 poi tolgo 3",
+            "ho 18 perdo 5 e poi perdo 2",
+            "inizio con 20 sottraggo 6 poi sottraggo 4",
+            "parto da 12 tolgo 3 e infine tolgo 2",
+            "ho 17 diminuisco di 5 poi diminuisco di 4",
+            "inizio da 14 spendo 3 poi spendo 2"
+        });
+        add(val,3,{"parto da 19 tolgo 7 poi tolgo 4","ho 16 perdo 5 poi perdo 3"});
+        add(test,3,{"inizio con 21 sottraggo 8 poi sottraggo 2","parto da 13 diminuisco di 4 poi diminuisco di 3"});
+
+        add(train,4,{
+            "parto da 3 moltiplico per 4 poi aggiungo 2",
+            "ho 5 volte 2 e poi ricevo 3",
+            "inizio con 6 moltiplico per 3 poi sommo 4",
+            "parto da 2 faccio per 5 e infine aggiungo 7",
+            "ho 4 moltiplico per 6 poi aumento di 2",
+            "inizio da 7 faccio per 2 poi ricevo 5"
+        });
+        add(val,4,{"parto da 8 moltiplico per 3 poi aggiungo 4","ho 9 faccio per 2 poi ricevo 1"});
+        add(test,4,{"inizio con 5 moltiplico per 4 poi sommo 3","parto da 6 faccio per 3 poi aumento di 2"});
+
+        add(train,5,{
+            "parto da 3 moltiplico per 4 poi tolgo 2",
+            "ho 5 volte 3 e poi perdo 4",
+            "inizio con 6 moltiplico per 2 poi sottraggo 3",
+            "parto da 4 faccio per 5 e infine tolgo 6",
+            "ho 7 moltiplico per 3 poi diminuisco di 2",
+            "inizio da 8 faccio per 2 poi spendo 5"
+        });
+        add(val,5,{"parto da 9 moltiplico per 2 poi tolgo 4","ho 6 faccio per 4 poi perdo 3"});
+        add(test,5,{"inizio con 7 moltiplico per 5 poi sottraggo 6","parto da 8 faccio per 3 poi diminuisco di 4"});
+
+        add(train,6,{
+            "parto da 3 aggiungo 2 poi moltiplico tutto per 4",
+            "ho 5 ricevo 3 e poi faccio per 2",
+            "inizio con 6 sommo 4 poi moltiplico il risultato per 3",
+            "parto da 2 aggiungo 7 e infine moltiplico per 5",
+            "ho 4 aumento di 3 poi faccio per 6",
+            "inizio da 7 ricevo 2 poi moltiplico tutto per 3"
+        });
+        add(val,6,{"parto da 8 aggiungo 5 poi moltiplico tutto per 2","ho 6 ricevo 3 poi faccio per 4"});
+        add(test,6,{"inizio con 5 sommo 7 poi moltiplico il risultato per 3","parto da 9 aumento di 2 poi faccio per 5"});
+
+        add(train,7,{
+            "parto da 8 tolgo 2 poi moltiplico tutto per 3",
+            "ho 10 perdo 4 e poi faccio per 2",
+            "inizio con 12 sottraggo 5 poi moltiplico il risultato per 4",
+            "parto da 9 tolgo 3 e infine moltiplico per 5",
+            "ho 11 diminuisco di 2 poi faccio per 3",
+            "inizio da 14 spendo 4 poi moltiplico tutto per 2"
+        });
+        add(val,7,{"parto da 13 tolgo 5 poi moltiplico tutto per 3","ho 9 perdo 2 poi faccio per 4"});
+        add(test,7,{"inizio con 15 sottraggo 6 poi moltiplico il risultato per 2","parto da 12 diminuisco di 3 poi faccio per 5"});
+
+        std::mt19937 r(seed ^ 0x4A11C0DEu);
+        deterministicShuffle(train,r);
+        deterministicShuffle(val,r);
+        deterministicShuffle(test,r);
+    }
+};
+
+class Goal4ReasoningBrain {
+public:
+    static constexpr int FEATURES=512;
+    static constexpr int CLASSES=8;
+    uint32_t seed=174;
+    int step=0;
+    std::vector<float> w;
+    std::vector<float> b;
+
+    explicit Goal4ReasoningBrain(uint32_t s=174):seed(s),w(FEATURES*CLASSES),b(CLASSES,0.0f){
+        std::mt19937 r(seed ^ 0x4A11BEEFu);
+        for(float& x:w) x=0.003f*deterministicNormalApprox(r);
+    }
+
+    int parameterCount() const { return static_cast<int>(w.size()+b.size()); }
+
+    std::vector<float> logits(const std::string& text) const {
+        auto x=Goal1IntentBrain::features(text);
+        std::vector<float> z(CLASSES,0.0f);
+        for(int k=0;k<CLASSES;++k){
+            float s=b[k];
+            for(int i=0;i<FEATURES;++i) s+=x[i]*w[i*CLASSES+k];
+            z[k]=s;
+        }
+        return z;
+    }
+
+    int predict(const std::string& text,float* confidence=nullptr) const {
+        auto z=logits(text);
+        float mx=*std::max_element(z.begin(),z.end());
+        float sum=0.0f;
+        std::vector<float> p(CLASSES);
+        for(int k=0;k<CLASSES;++k){ p[k]=std::exp(z[k]-mx); sum+=p[k]; }
+        int best=0; float bp=-1.0f;
+        for(int k=0;k<CLASSES;++k){ p[k]/=sum; if(p[k]>bp){bp=p[k];best=k;} }
+        if(confidence) *confidence=bp;
+        return best;
+    }
+
+    Metrics evaluate(const std::vector<Goal4Example>& set) const {
+        if(set.empty()) return {};
+        double loss=0.0; int correct=0;
+        for(const auto& e:set){
+            auto z=logits(e.text);
+            float mx=*std::max_element(z.begin(),z.end());
+            float sum=0.0f; for(float v:z) sum+=std::exp(v-mx);
+            loss-=z[e.label]-mx-std::log(sum);
+            int best=static_cast<int>(std::max_element(z.begin(),z.end())-z.begin());
+            if(best==e.label) ++correct;
+        }
+        return {static_cast<float>(loss/set.size()),static_cast<float>(correct)/set.size()};
+    }
+
+    Goal4TrainResult train(const Goal4Dataset& data,int steps,int batch,float lr){
+        auto t0=std::chrono::steady_clock::now();
+        int done=0;
+        for(int s=0;s<steps;++s){
+            std::mt19937 r(seed ^ 0x4A11CAFEu ^ static_cast<uint32_t>(step+1));
+            std::vector<float> gw(w.size(),0.0f),gb(b.size(),0.0f);
+            for(int n=0;n<batch;++n){
+                const auto& e=data.train[deterministicIndex(r,data.train.size())];
+                auto x=Goal1IntentBrain::features(e.text);
+                std::vector<float> z(CLASSES);
+                float mx=-std::numeric_limits<float>::infinity();
+                for(int k=0;k<CLASSES;++k){
+                    float q=b[k];
+                    for(int i=0;i<FEATURES;++i) q+=x[i]*w[i*CLASSES+k];
+                    z[k]=q; mx=std::max(mx,q);
+                }
+                float sum=0.0f;
+                for(int k=0;k<CLASSES;++k){ z[k]=std::exp(z[k]-mx); sum+=z[k]; }
+                for(int k=0;k<CLASSES;++k){
+                    float g=z[k]/sum-(k==e.label?1.0f:0.0f);
+                    gb[k]+=g;
+                    for(int i=0;i<FEATURES;++i) if(x[i]!=0.0f) gw[i*CLASSES+k]+=g*x[i];
+                }
+            }
+            float rate=lr/std::max(1,batch);
+            for(size_t i=0;i<w.size();++i) w[i]-=rate*(gw[i]+0.0002f*w[i]);
+            for(size_t i=0;i<b.size();++i) b[i]-=rate*gb[i];
+            ++step; ++done;
+        }
+        auto t1=std::chrono::steady_clock::now();
+        Goal4TrainResult out;
+        out.steps_completed=done;
+        out.train=evaluate(data.train);
+        out.validation=evaluate(data.val);
+        out.elapsed_seconds=std::chrono::duration<double>(t1-t0).count();
+        return out;
+    }
+
+    static const char* planName(int k){
+        static const char* names[CLASSES]={"add_add","add_sub","sub_add","sub_sub","mul_add","mul_sub","add_mul","sub_mul"};
+        return (k>=0&&k<CLASSES)?names[k]:"unknown";
+    }
+
+    static bool extractThree(const std::string& text,int& a,int& b,int& c){
+        std::vector<int> nums;
+        std::string s=normalizeItalian(text);
+        for(size_t i=0;i<s.size();){
+            if(std::isdigit(static_cast<unsigned char>(s[i]))){
+                int v=0;
+                while(i<s.size()&&std::isdigit(static_cast<unsigned char>(s[i]))){
+                    v=v*10+(s[i]-'0'); ++i;
+                }
+                nums.push_back(v);
+            }else ++i;
+        }
+        if(nums.size()<3) return false;
+        a=nums[0];b=nums[1];c=nums[2];
+        return true;
+    }
+
+    static long long execute(int plan,int a,int b,int c){
+        switch(plan){
+            case 0:return static_cast<long long>(a)+b+c;
+            case 1:return static_cast<long long>(a)+b-c;
+            case 2:return static_cast<long long>(a)-b+c;
+            case 3:return static_cast<long long>(a)-b-c;
+            case 4:return static_cast<long long>(a)*b+c;
+            case 5:return static_cast<long long>(a)*b-c;
+            case 6:return (static_cast<long long>(a)+b)*c;
+            case 7:return (static_cast<long long>(a)-b)*c;
+            default:return 0;
+        }
+    }
+};
+
 Metrics eval(TinyTransformer&m,const std::vector<Example>&set){
     if(set.empty()) return {};
     double loss=0; int correct=0,total=0;
@@ -1554,11 +1793,13 @@ public:
     Goal2Dataset goal2data;
     Goal3MemoryBrain goal3;
     Goal3Dataset goal3data;
+    Goal4ReasoningBrain goal4;
+    Goal4Dataset goal4data;
     std::atomic<bool> pause{false};
     mutable std::mutex mu;
     explicit Impl(uint32_t s)
         :seed(s),model(s),curriculum(0),curriculum_start_step(0),data(s,0),
-         goal1(s),goal1data(s),goal2(s),goal2data(s),goal3(s),goal3data(s){}
+         goal1(s),goal1data(s),goal2(s),goal2data(s),goal3(s),goal3data(s),goal4(s),goal4data(s){}
 };
 
 Engine::Engine(uint32_t seed):impl_(std::make_unique<Impl>(seed)){}
@@ -1643,6 +1884,34 @@ std::string Engine::classifyGoal3(const std::string& text) const {
      <<"{\"action\":\""<<Goal3MemoryBrain::actionName(label)
      <<"\",\"slot\":\""<<Goal3MemoryBrain::slotName(label)
      <<"\",\"confidence\":"<<confidence<<"}";
+    return s.str();
+}
+
+Metrics Engine::evaluateGoal4Train(){ std::lock_guard<std::mutex> g(impl_->mu); return impl_->goal4.evaluate(impl_->goal4data.train); }
+Metrics Engine::evaluateGoal4Validation(){ std::lock_guard<std::mutex> g(impl_->mu); return impl_->goal4.evaluate(impl_->goal4data.val); }
+Metrics Engine::evaluateGoal4Test(){ std::lock_guard<std::mutex> g(impl_->mu); return impl_->goal4.evaluate(impl_->goal4data.test); }
+Goal4TrainResult Engine::trainGoal4(int steps,int batch,float lr){
+    std::lock_guard<std::mutex> g(impl_->mu);
+    return impl_->goal4.train(impl_->goal4data,steps,batch,lr);
+}
+int Engine::goal4Step() const { std::lock_guard<std::mutex> g(impl_->mu); return impl_->goal4.step; }
+int Engine::goal4ParameterCount() const { std::lock_guard<std::mutex> g(impl_->mu); return impl_->goal4.parameterCount(); }
+std::string Engine::solveGoal4(const std::string& text) const {
+    std::lock_guard<std::mutex> g(impl_->mu);
+    float confidence=0.0f;
+    int plan=impl_->goal4.predict(text,&confidence);
+    int a=0,b=0,c3=0;
+    bool valid=Goal4ReasoningBrain::extractThree(text,a,b,c3);
+    std::ostringstream s;
+    s<<std::fixed<<std::setprecision(4)
+     <<"{\"valid\":"<<(valid?"true":"false")
+     <<",\"plan\":\""<<Goal4ReasoningBrain::planName(plan)
+     <<"\",\"confidence\":"<<confidence;
+    if(valid){
+        s<<",\"a\":"<<a<<",\"b\":"<<b<<",\"c\":"<<c3
+         <<",\"result\":"<<Goal4ReasoningBrain::execute(plan,a,b,c3);
+    }
+    s<<"}";
     return s.str();
 }
 
@@ -1732,8 +2001,8 @@ bool Engine::saveCheckpoint(const std::string&dir) const{
     try{
         std::filesystem::create_directories(dir);
         std::ofstream w(dir+"/weights.bin",std::ios::binary); if(!w)return false;
-        const char magic[8]={'M','O','T','A','I','0','1','4'}; w.write(magic,8);
-        uint32_t ver=8,seed=impl_->seed,step=impl_->step,level=impl_->curriculum,start_step=impl_->curriculum_start_step,pc=impl_->model.p.size();
+        const char magic[8]={'M','O','T','A','I','0','1','5'}; w.write(magic,8);
+        uint32_t ver=9,seed=impl_->seed,step=impl_->step,level=impl_->curriculum,start_step=impl_->curriculum_start_step,pc=impl_->model.p.size();
         w.write((char*)&ver,4); w.write((char*)&seed,4); w.write((char*)&step,4); w.write((char*)&level,4); w.write((char*)&start_step,4); w.write((char*)&pc,4);
         for(auto&z:impl_->model.p){
             uint32_t nl=z.name.size(),sz=z.value.n->data.size();
@@ -1757,6 +2026,12 @@ bool Engine::saveCheckpoint(const std::string&dir) const{
         w.write((char*)&goal3_step,4); w.write((char*)&goal3_w,4); w.write((char*)&goal3_b,4);
         w.write((char*)impl_->goal3.w.data(),goal3_w*sizeof(float));
         w.write((char*)impl_->goal3.b.data(),goal3_b*sizeof(float));
+        uint32_t goal4_step=static_cast<uint32_t>(impl_->goal4.step);
+        uint32_t goal4_w=static_cast<uint32_t>(impl_->goal4.w.size());
+        uint32_t goal4_b=static_cast<uint32_t>(impl_->goal4.b.size());
+        w.write((char*)&goal4_step,4); w.write((char*)&goal4_w,4); w.write((char*)&goal4_b,4);
+        w.write((char*)impl_->goal4.w.data(),goal4_w*sizeof(float));
+        w.write((char*)impl_->goal4.b.data(),goal4_b*sizeof(float));
         w.close();
         Metrics va=eval(const_cast<TinyTransformer&>(impl_->model),impl_->data.val);
         Metrics r0=eval(const_cast<TinyTransformer&>(impl_->model),impl_->data.retention_l0);
@@ -1780,6 +2055,8 @@ bool Engine::saveCheckpoint(const std::string&dir) const{
          <<",\n  \"goal2_validation_accuracy\": "<<impl_->goal2.evaluate(impl_->goal2data.val).answer_accuracy
          <<",\n  \"goal3_step\": "<<impl_->goal3.step
          <<",\n  \"goal3_validation_accuracy\": "<<impl_->goal3.evaluate(impl_->goal3data.val).answer_accuracy
+         <<",\n  \"goal4_step\": "<<impl_->goal4.step
+         <<",\n  \"goal4_validation_accuracy\": "<<impl_->goal4.evaluate(impl_->goal4data.val).answer_accuracy
          <<",\n  \"pretrained_model\": false,\n  \"weights_origin\": \"random_then_local_training\"\n}\n";
         return (bool)j;
     }catch(...){return false;}
@@ -1817,6 +2094,9 @@ bool Engine::loadCheckpoint(const std::string&dir){
         }else if(m=="MOTAI014"){
             w.read((char*)&ver,4); w.read((char*)&seed,4); w.read((char*)&step,4); w.read((char*)&level,4); w.read((char*)&start_step,4); w.read((char*)&pc,4);
             if(ver!=8 || level>5 || start_step>step) return false;
+        }else if(m=="MOTAI015"){
+            w.read((char*)&ver,4); w.read((char*)&seed,4); w.read((char*)&step,4); w.read((char*)&level,4); w.read((char*)&start_step,4); w.read((char*)&pc,4);
+            if(ver!=9 || level>5 || start_step>step) return false;
         }else return false;
 
         // Migrazione per vocabolario 11 -> 12: carica per nome e conserva il nuovo token ? inizializzato localmente.
@@ -1878,6 +2158,16 @@ bool Engine::loadCheckpoint(const std::string&dir){
             if(!w) return false;
             loadedGoal3.step=static_cast<int>(goal3_step);
         }
+        Goal4ReasoningBrain loadedGoal4(seed);
+        if(ver>=9){
+            uint32_t goal4_step=0,goal4_w=0,goal4_b=0;
+            w.read((char*)&goal4_step,4); w.read((char*)&goal4_w,4); w.read((char*)&goal4_b,4);
+            if(goal4_w!=loadedGoal4.w.size() || goal4_b!=loadedGoal4.b.size()) return false;
+            w.read((char*)loadedGoal4.w.data(),goal4_w*sizeof(float));
+            w.read((char*)loadedGoal4.b.data(),goal4_b*sizeof(float));
+            if(!w) return false;
+            loadedGoal4.step=static_cast<int>(goal4_step);
+        }
         impl_->seed=seed;
         impl_->curriculum=static_cast<int>(level);
         impl_->curriculum_start_step=static_cast<int>(start_step);
@@ -1889,6 +2179,8 @@ bool Engine::loadCheckpoint(const std::string&dir){
         impl_->goal2data=Goal2Dataset(seed);
         impl_->goal3=std::move(loadedGoal3);
         impl_->goal3data=Goal3Dataset(seed);
+        impl_->goal4=std::move(loadedGoal4);
+        impl_->goal4data=Goal4Dataset(seed);
         return true;
     }catch(...){return false;}
 }
@@ -1903,6 +2195,7 @@ std::string Engine::statusJson() const{
       <<",\"goal1_step\":"<<impl_->goal1.step<<",\"goal1_validation_accuracy\":"<<impl_->goal1.evaluate(impl_->goal1data.val).answer_accuracy
       <<",\"goal2_step\":"<<impl_->goal2.step<<",\"goal2_validation_accuracy\":"<<impl_->goal2.evaluate(impl_->goal2data.val).answer_accuracy
       <<",\"goal3_step\":"<<impl_->goal3.step<<",\"goal3_validation_accuracy\":"<<impl_->goal3.evaluate(impl_->goal3data.val).answer_accuracy
+      <<",\"goal4_step\":"<<impl_->goal4.step<<",\"goal4_validation_accuracy\":"<<impl_->goal4.evaluate(impl_->goal4data.val).answer_accuracy
       <<",\"pretrained\":false}";
     return s.str();
 }
