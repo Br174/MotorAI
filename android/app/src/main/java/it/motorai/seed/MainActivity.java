@@ -94,7 +94,7 @@ public class MainActivity extends Activity {
         root.addView(text("MotorAI Seed 011", 28, true));
         root.addView(text("Cervello: Transformer causale nativo C++ · pesi iniziali casuali · nessun modello preaddestrato", 15, false));
         root.addView(text("Curriculum: L0–L4 consolidati → Auto-Training V1 → L5 uguaglianza adiacente", 14, false));
-        root.addView(text("Auto-Training V1: genera gli esercizi, addestra, valida, controlla le memorie, salva checkpoint e fa rollback automaticamente. L5 impara una nuova posizione relazionale: decide se i primi due simboli coincidono, ignorando il terzo distrattore. Il canale neurale L5 è separato da L4.", 14, false));
+        root.addView(text("Auto-Training V1: genera gli esercizi, addestra, valida, controlla le memorie, salva checkpoint e fa rollback automaticamente. L5 impara una nuova posizione relazionale: decide se i primi due simboli coincidono nell’alfabeto base a–i, generalizzando a distrattori mai visti per la stessa coppia. Il canale neurale L5 è separato da L4.", 14, false));
 
         state = text("Stato: inizializzazione…", 16, true);
         curriculum = text("Livello: —", 15, true);
@@ -611,7 +611,7 @@ public class MainActivity extends Activity {
                             getSharedPreferences("motorai_evolution", MODE_PRIVATE)
                                     .edit().putBoolean("l5_accepted", true).apply();
                             recordEvolution(fin, "L5 consolidato",
-                                    "Ha imparato a riconoscere se i primi due simboli coincidono anche in presenza di un distrattore.", true);
+                                    "Ha imparato a riconoscere la relazione tra i primi due simboli anche con distrattori nuovi.", true);
                             training.set(false);
                             ui(() -> {
                                 state.setText(String.format(Locale.ITALY,
@@ -851,7 +851,7 @@ public class MainActivity extends Activity {
         if (acceptedLevel >= 2) b.append("\n✅ Selezionare e duplicare il primo simbolo");
         if (acceptedLevel >= 3) b.append("\n✅ Selezionare e duplicare il secondo simbolo");
         if (acceptedLevel >= 4) b.append("\n✅ Riconoscere un'uguaglianza strutturale a distanza");
-        if (acceptedLevel >= 5) b.append("\n✅ Riconoscere l'uguaglianza dei primi due simboli con un distrattore");
+        if (acceptedLevel >= 5) b.append("\n✅ Riconoscere l'uguaglianza dei primi due simboli con distrattori nuovi");
         return b.toString();
     }
 
@@ -876,7 +876,7 @@ public class MainActivity extends Activity {
         if (level < 5) {
             learningNow.setText("🔄 Cosa sta imparando: Auto-Training pronto per scegliere il prossimo livello.");
         } else if (!l5Accepted) {
-            learningNow.setText("🔄 Cosa sta imparando: riconoscere se i primi due simboli coincidono, ignorando un terzo simbolo distrattore.");
+            learningNow.setText("🔄 Cosa sta imparando: riconoscere la relazione tra i primi due simboli anche con un distrattore mai visto.");
         } else {
             learningNow.setText("🔄 Cosa sta imparando: L5 consolidato; prossimo curriculum in preparazione.");
         }
