@@ -34,6 +34,15 @@ jobs:
             -o /tmp/motorai_curriculum_smoke
           /tmp/motorai_curriculum_smoke
 
+      - name: Verify Mini-AI Goal1 native benchmark
+        id: goal1_gate
+        continue-on-error: true
+        run: |
+          g++ -std=c++20 -O2 -pthread -Iandroid/app/src/main/cpp \
+            tools/goal1_smoke.cpp android/app/src/main/cpp/motorai_core.cpp \
+            -o /tmp/motorai_goal1_smoke
+          /tmp/motorai_goal1_smoke
+
       - name: Verify background Auto-Training handoff
         run: |
           grep -q "scheduleKick" android/app/src/main/java/it/motorai/seed/MotorAIBackgroundJobService.java
@@ -50,6 +59,9 @@ jobs:
           grep -q "class MiniAiGoalsActivity" android/app/src/main/java/it/motorai/seed/MiniAiGoalsActivity.java
           grep -q "totalPercent" android/app/src/main/java/it/motorai/seed/MiniAiGoals.java
           grep -q "MiniAiGoalsActivity" android/app/src/main/AndroidManifest.xml
+          grep -q "nativeGoal1TrainChunk" android/app/src/main/java/it/motorai/seed/MainActivity.java
+          grep -q "runGoal1Chunk" android/app/src/main/java/it/motorai/seed/MotorAIBackgroundJobService.java
+          grep -q "miniAiGoal1Percent" android/app/src/main/java/it/motorai/seed/MotorAIBridgeClient.java
 
       - name: Set up JDK 17
         uses: actions/setup-java@v5
@@ -83,7 +95,7 @@ jobs:
         if: steps.native_gate.outcome == 'success' && steps.android_build.outcome == 'success'
         uses: actions/upload-artifact@v6
         with:
-          name: MotorAI-Seed011R2-debug
+          name: MotorAI-Seed012-debug
           path: android/app/build/outputs/apk/debug/*.apk
           if-no-files-found: error
           retention-days: 14
@@ -92,8 +104,10 @@ jobs:
         if: always()
         run: |
           echo "Native curriculum: ${{ steps.native_gate.outcome }}"
+          echo "Mini-AI Goal1: ${{ steps.goal1_gate.outcome }}"
           echo "Android build: ${{ steps.android_build.outcome }}"
           test "${{ steps.native_gate.outcome }}" = "success"
+          test "${{ steps.goal1_gate.outcome }}" = "success"
           test "${{ steps.android_build.outcome }}" = "success"
 
 # Seed004 final validation trigger
