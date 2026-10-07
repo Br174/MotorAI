@@ -34,6 +34,14 @@ jobs:
             -o /tmp/motorai_curriculum_smoke
           /tmp/motorai_curriculum_smoke
 
+      - name: Verify background Auto-Training handoff
+        run: |
+          grep -q "scheduleKick" android/app/src/main/java/it/motorai/seed/MotorAIBackgroundJobService.java
+          grep -q "setMinimumLatency" android/app/src/main/java/it/motorai/seed/MotorAIBackgroundJobService.java
+          grep -q "MAX_CHUNKS_PER_WAKE" android/app/src/main/java/it/motorai/seed/MotorAIBackgroundJobService.java
+          grep -q "if (!runLevel5Chunk(runtime, evo))" android/app/src/main/java/it/motorai/seed/MotorAIBackgroundJobService.java
+          grep -q "MotorAIBackgroundJobService.scheduleKick" android/app/src/main/java/it/motorai/seed/MainActivity.java
+
       - name: Set up JDK 17
         uses: actions/setup-java@v5
         with:
