@@ -1334,6 +1334,192 @@ public:
     }
 };
 
+
+struct Goal3Example {
+    std::string text;
+    int label = 8;
+};
+
+struct Goal3Dataset {
+    std::vector<Goal3Example> train, val, test;
+
+    static void add(std::vector<Goal3Example>& dst,int label,std::initializer_list<const char*> values){
+        for(const char* s:values) dst.push_back({s,label});
+    }
+
+    explicit Goal3Dataset(uint32_t seed){
+        // 0 store_name, 1 recall_name, 2 store_city, 3 recall_city,
+        // 4 store_color, 5 recall_color, 6 store_pet, 7 recall_pet, 8 other.
+        add(train,0,{"mi chiamo luca","il mio nome e marco","ricorda che mi chiamo paolo",
+                     "io mi chiamo anna","puoi ricordare che mi chiamo sara","salva il mio nome giulia",
+                     "tieni a mente che il mio nome e davide","il nome che uso e luca",
+                     "ricordati il mio nome marco","voglio che ricordi che mi chiamo elena"});
+        add(val,0,{"mi chiamo giorgio","ricorda il mio nome carla","il mio nome e matteo","tieni a mente che mi chiamo lucia"});
+        add(test,0,{"io mi chiamo andrea","ricordati che il mio nome e chiara","salva il mio nome federico","puoi ricordare che mi chiamo monica"});
+
+        add(train,1,{"come mi chiamo","qual e il mio nome","ricordi il mio nome","dimmi come mi chiamo",
+                     "ti ricordi come mi chiamo","che nome ti ho detto","qual e il nome che ti ho detto",
+                     "puoi dirmi il mio nome","come avevo detto di chiamarmi","ricordami il mio nome"});
+        add(val,1,{"come mi avevi chiamato","sai il mio nome","che nome ricordi di me","dimmi il nome che ricordi"});
+        add(test,1,{"ti ricordi il mio nome","qual era il mio nome","come ho detto che mi chiamo","dimmi come mi avevo presentato"});
+
+        add(train,2,{"vivo a roma","abito a napoli","la mia citta e milano","ricorda che vivo a torino",
+                     "tieni a mente che abito a firenze","io vivo a bologna","salva che la mia citta e genova",
+                     "ricordati che abito a salerno","la citta dove vivo e bari","abito nella citta di venezia"});
+        add(val,2,{"vivo a palermo","ricorda che abito a cagliari","la mia citta e perugia","tieni a mente che vivo a parma"});
+        add(test,2,{"io abito a lecce","ricordati che vivo a pisa","la citta dove abito e trieste","salva che vivo a modena"});
+
+        add(train,3,{"dove vivo","dove abito","qual e la mia citta","ricordi dove vivo",
+                     "ti ricordi dove abito","dimmi la citta dove vivo","che citta ti ho detto",
+                     "qual era la mia citta","sai dove abito","ricordami dove vivo"});
+        add(val,3,{"in che citta vivo","dove avevo detto di abitare","che citta ricordi di me","dimmi dove abito"});
+        add(test,3,{"ti ricordi la mia citta","qual e la citta dove abito","dove ho detto che vivo","che luogo ricordi come mia citta"});
+
+        add(train,4,{"il mio colore preferito e blu","preferisco il colore rosso","ricorda che il mio colore e verde",
+                     "tieni a mente che mi piace il giallo","il colore che preferisco e nero",
+                     "salva che il mio colore preferito e bianco","mi piace soprattutto il viola",
+                     "ricordati che preferisco arancione","come colore preferisco azzurro","il mio colore e rosa"});
+        add(val,4,{"il mio colore preferito e marrone","ricorda che preferisco blu","mi piace soprattutto il verde","tieni a mente che il mio colore e rosso"});
+        add(test,4,{"preferisco il colore viola","il colore che mi piace di piu e blu","salva che preferisco giallo","ricordati che il mio colore preferito e nero"});
+
+        add(train,5,{"qual e il mio colore preferito","che colore preferisco","ricordi il mio colore","dimmi il colore che mi piace",
+                     "ti ricordi che colore preferisco","quale colore ti ho detto","sai il mio colore preferito",
+                     "ricordami il colore che preferisco","che colore ricordi di me","qual era il mio colore"});
+        add(val,5,{"quale colore mi piace","dimmi il mio colore preferito","che colore avevo scelto","ricordi quale colore preferisco"});
+        add(test,5,{"ti ricordi il colore che preferisco","qual e il colore che ti ho detto","che colore mi piace di piu","dimmi che colore ricordi"});
+
+        add(train,6,{"ho un cane di nome fido","il mio animale e un gatto","ricorda che ho un cane",
+                     "tieni a mente che il mio animale e un coniglio","ho un gatto di nome luna",
+                     "salva che ho un pappagallo","ricordati che il mio animale e un cane",
+                     "a casa ho un gatto","il mio animale domestico e un criceto","ho un cane chiamato rex"});
+        add(val,6,{"ho un gatto chiamato milo","ricorda che ho un coniglio","il mio animale domestico e un cane","tieni a mente che ho un gatto"});
+        add(test,6,{"io ho un cane chiamato leo","salva che il mio animale e un gatto","ricordati che ho un pappagallo","a casa ho un coniglio"});
+
+        add(train,7,{"che animale ho","qual e il mio animale","ricordi il mio animale","ti ricordi se ho un cane",
+                     "dimmi che animale ho","quale animale ti ho detto","sai che animale ho a casa",
+                     "ricordami il mio animale domestico","che animale ricordi di me","qual era il mio animale"});
+        add(val,7,{"che animale domestico ho","ricordi quale animale ho","dimmi il mio animale","che animale avevo detto di avere"});
+        add(test,7,{"ti ricordi che animale ho","qual e l animale che ti ho detto","che animale ho a casa","dimmi quale animale ricordi"});
+
+        add(train,8,{"ciao come va","quanto fa due piu due","cerca informazioni su roma","chi e dante",
+                     "apri la musica","spiegami la luna","buongiorno","scrivi una nota",
+                     "trova notizie sulla tecnologia","calcola cinque piu sei","che tempo fa oggi","raccontami una storia"});
+        add(val,8,{"salve","quanto fa tre per quattro","chi era galileo","cerca notizie sul calcio"});
+        add(test,8,{"buonasera","calcola otto piu nove","spiegami un vulcano","apri il calendario"});
+
+        std::mt19937 r(seed ^ 0x3A11C0DEu);
+        deterministicShuffle(train,r);
+        deterministicShuffle(val,r);
+        deterministicShuffle(test,r);
+    }
+};
+
+class Goal3MemoryBrain {
+public:
+    static constexpr int FEATURES=512;
+    static constexpr int CLASSES=9;
+    uint32_t seed=174;
+    int step=0;
+    std::vector<float> w;
+    std::vector<float> b;
+
+    explicit Goal3MemoryBrain(uint32_t s=174):seed(s),w(FEATURES*CLASSES),b(CLASSES,0.0f){
+        std::mt19937 r(seed ^ 0x3A11BEEFu);
+        for(float& x:w) x=0.003f*deterministicNormalApprox(r);
+    }
+
+    int parameterCount() const { return static_cast<int>(w.size()+b.size()); }
+
+    std::vector<float> logits(const std::string& text) const {
+        auto x=Goal1IntentBrain::features(text);
+        std::vector<float> z(CLASSES,0.0f);
+        for(int k=0;k<CLASSES;++k){
+            float s=b[k];
+            for(int i=0;i<FEATURES;++i) s+=x[i]*w[i*CLASSES+k];
+            z[k]=s;
+        }
+        return z;
+    }
+
+    int predict(const std::string& text,float* confidence=nullptr) const {
+        auto z=logits(text);
+        float mx=*std::max_element(z.begin(),z.end());
+        float sum=0.0f;
+        std::vector<float> p(CLASSES);
+        for(int k=0;k<CLASSES;++k){ p[k]=std::exp(z[k]-mx); sum+=p[k]; }
+        int best=0; float bp=-1.0f;
+        for(int k=0;k<CLASSES;++k){ p[k]/=sum; if(p[k]>bp){bp=p[k];best=k;} }
+        if(confidence) *confidence=bp;
+        return best;
+    }
+
+    Metrics evaluate(const std::vector<Goal3Example>& set) const {
+        if(set.empty()) return {};
+        double loss=0.0; int correct=0;
+        for(const auto& e:set){
+            auto z=logits(e.text);
+            float mx=*std::max_element(z.begin(),z.end());
+            float sum=0.0f; for(float v:z) sum+=std::exp(v-mx);
+            loss-=z[e.label]-mx-std::log(sum);
+            int best=static_cast<int>(std::max_element(z.begin(),z.end())-z.begin());
+            if(best==e.label) ++correct;
+        }
+        return {static_cast<float>(loss/set.size()),static_cast<float>(correct)/set.size()};
+    }
+
+    Goal3TrainResult train(const Goal3Dataset& data,int steps,int batch,float lr){
+        auto t0=std::chrono::steady_clock::now();
+        int done=0;
+        for(int s=0;s<steps;++s){
+            std::mt19937 r(seed ^ 0x3A11CAFEu ^ static_cast<uint32_t>(step+1));
+            std::vector<float> gw(w.size(),0.0f),gb(b.size(),0.0f);
+            for(int n=0;n<batch;++n){
+                const auto& e=data.train[deterministicIndex(r,data.train.size())];
+                auto x=Goal1IntentBrain::features(e.text);
+                std::vector<float> z(CLASSES);
+                float mx=-std::numeric_limits<float>::infinity();
+                for(int k=0;k<CLASSES;++k){
+                    float q=b[k];
+                    for(int i=0;i<FEATURES;++i) q+=x[i]*w[i*CLASSES+k];
+                    z[k]=q; mx=std::max(mx,q);
+                }
+                float sum=0.0f;
+                for(int k=0;k<CLASSES;++k){ z[k]=std::exp(z[k]-mx); sum+=z[k]; }
+                for(int k=0;k<CLASSES;++k){
+                    float g=z[k]/sum-(k==e.label?1.0f:0.0f);
+                    gb[k]+=g;
+                    for(int i=0;i<FEATURES;++i) if(x[i]!=0.0f) gw[i*CLASSES+k]+=g*x[i];
+                }
+            }
+            float rate=lr/std::max(1,batch);
+            for(size_t i=0;i<w.size();++i) w[i]-=rate*(gw[i]+0.0002f*w[i]);
+            for(size_t i=0;i<b.size();++i) b[i]-=rate*gb[i];
+            ++step; ++done;
+        }
+        auto t1=std::chrono::steady_clock::now();
+        Goal3TrainResult out;
+        out.steps_completed=done;
+        out.train=evaluate(data.train);
+        out.validation=evaluate(data.val);
+        out.elapsed_seconds=std::chrono::duration<double>(t1-t0).count();
+        return out;
+    }
+
+    static const char* actionName(int k){
+        if(k==0||k==2||k==4||k==6) return "store";
+        if(k==1||k==3||k==5||k==7) return "recall";
+        return "none";
+    }
+
+    static const char* slotName(int k){
+        if(k==0||k==1) return "name";
+        if(k==2||k==3) return "city";
+        if(k==4||k==5) return "color";
+        if(k==6||k==7) return "pet";
+        return "none";
+    }
+};
+
 Metrics eval(TinyTransformer&m,const std::vector<Example>&set){
     if(set.empty()) return {};
     double loss=0; int correct=0,total=0;
@@ -1366,11 +1552,13 @@ public:
     Goal1Dataset goal1data;
     Goal2ResponseBrain goal2;
     Goal2Dataset goal2data;
+    Goal3MemoryBrain goal3;
+    Goal3Dataset goal3data;
     std::atomic<bool> pause{false};
     mutable std::mutex mu;
     explicit Impl(uint32_t s)
         :seed(s),model(s),curriculum(0),curriculum_start_step(0),data(s,0),
-         goal1(s),goal1data(s),goal2(s),goal2data(s){}
+         goal1(s),goal1data(s),goal2(s),goal2data(s),goal3(s),goal3data(s){}
 };
 
 Engine::Engine(uint32_t seed):impl_(std::make_unique<Impl>(seed)){}
@@ -1434,6 +1622,27 @@ std::string Engine::respondGoal2(const std::string& text) const {
     std::ostringstream s;
     s<<"{\"intent\":\""<<Goal1IntentBrain::labelName(intent)
      <<"\",\"reply\":\""<<esc(reply)<<"\"}";
+    return s.str();
+}
+
+Metrics Engine::evaluateGoal3Train(){ std::lock_guard<std::mutex> g(impl_->mu); return impl_->goal3.evaluate(impl_->goal3data.train); }
+Metrics Engine::evaluateGoal3Validation(){ std::lock_guard<std::mutex> g(impl_->mu); return impl_->goal3.evaluate(impl_->goal3data.val); }
+Metrics Engine::evaluateGoal3Test(){ std::lock_guard<std::mutex> g(impl_->mu); return impl_->goal3.evaluate(impl_->goal3data.test); }
+Goal3TrainResult Engine::trainGoal3(int steps,int batch,float lr){
+    std::lock_guard<std::mutex> g(impl_->mu);
+    return impl_->goal3.train(impl_->goal3data,steps,batch,lr);
+}
+int Engine::goal3Step() const { std::lock_guard<std::mutex> g(impl_->mu); return impl_->goal3.step; }
+int Engine::goal3ParameterCount() const { std::lock_guard<std::mutex> g(impl_->mu); return impl_->goal3.parameterCount(); }
+std::string Engine::classifyGoal3(const std::string& text) const {
+    std::lock_guard<std::mutex> g(impl_->mu);
+    float confidence=0.0f;
+    int label=impl_->goal3.predict(text,&confidence);
+    std::ostringstream s;
+    s<<std::fixed<<std::setprecision(4)
+     <<"{\"action\":\""<<Goal3MemoryBrain::actionName(label)
+     <<"\",\"slot\":\""<<Goal3MemoryBrain::slotName(label)
+     <<"\",\"confidence\":"<<confidence<<"}";
     return s.str();
 }
 
@@ -1523,8 +1732,8 @@ bool Engine::saveCheckpoint(const std::string&dir) const{
     try{
         std::filesystem::create_directories(dir);
         std::ofstream w(dir+"/weights.bin",std::ios::binary); if(!w)return false;
-        const char magic[8]={'M','O','T','A','I','0','1','3'}; w.write(magic,8);
-        uint32_t ver=7,seed=impl_->seed,step=impl_->step,level=impl_->curriculum,start_step=impl_->curriculum_start_step,pc=impl_->model.p.size();
+        const char magic[8]={'M','O','T','A','I','0','1','4'}; w.write(magic,8);
+        uint32_t ver=8,seed=impl_->seed,step=impl_->step,level=impl_->curriculum,start_step=impl_->curriculum_start_step,pc=impl_->model.p.size();
         w.write((char*)&ver,4); w.write((char*)&seed,4); w.write((char*)&step,4); w.write((char*)&level,4); w.write((char*)&start_step,4); w.write((char*)&pc,4);
         for(auto&z:impl_->model.p){
             uint32_t nl=z.name.size(),sz=z.value.n->data.size();
@@ -1542,6 +1751,12 @@ bool Engine::saveCheckpoint(const std::string&dir) const{
         uint32_t goal2_w=static_cast<uint32_t>(impl_->goal2.w.size());
         w.write((char*)&goal2_step,4); w.write((char*)&goal2_w,4);
         w.write((char*)impl_->goal2.w.data(),goal2_w*sizeof(float));
+        uint32_t goal3_step=static_cast<uint32_t>(impl_->goal3.step);
+        uint32_t goal3_w=static_cast<uint32_t>(impl_->goal3.w.size());
+        uint32_t goal3_b=static_cast<uint32_t>(impl_->goal3.b.size());
+        w.write((char*)&goal3_step,4); w.write((char*)&goal3_w,4); w.write((char*)&goal3_b,4);
+        w.write((char*)impl_->goal3.w.data(),goal3_w*sizeof(float));
+        w.write((char*)impl_->goal3.b.data(),goal3_b*sizeof(float));
         w.close();
         Metrics va=eval(const_cast<TinyTransformer&>(impl_->model),impl_->data.val);
         Metrics r0=eval(const_cast<TinyTransformer&>(impl_->model),impl_->data.retention_l0);
@@ -1563,6 +1778,8 @@ bool Engine::saveCheckpoint(const std::string&dir) const{
          <<",\n  \"goal1_validation_accuracy\": "<<impl_->goal1.evaluate(impl_->goal1data.val).answer_accuracy
          <<",\n  \"goal2_step\": "<<impl_->goal2.step
          <<",\n  \"goal2_validation_accuracy\": "<<impl_->goal2.evaluate(impl_->goal2data.val).answer_accuracy
+         <<",\n  \"goal3_step\": "<<impl_->goal3.step
+         <<",\n  \"goal3_validation_accuracy\": "<<impl_->goal3.evaluate(impl_->goal3data.val).answer_accuracy
          <<",\n  \"pretrained_model\": false,\n  \"weights_origin\": \"random_then_local_training\"\n}\n";
         return (bool)j;
     }catch(...){return false;}
@@ -1597,6 +1814,9 @@ bool Engine::loadCheckpoint(const std::string&dir){
         }else if(m=="MOTAI013"){
             w.read((char*)&ver,4); w.read((char*)&seed,4); w.read((char*)&step,4); w.read((char*)&level,4); w.read((char*)&start_step,4); w.read((char*)&pc,4);
             if(ver!=7 || level>5 || start_step>step) return false;
+        }else if(m=="MOTAI014"){
+            w.read((char*)&ver,4); w.read((char*)&seed,4); w.read((char*)&step,4); w.read((char*)&level,4); w.read((char*)&start_step,4); w.read((char*)&pc,4);
+            if(ver!=8 || level>5 || start_step>step) return false;
         }else return false;
 
         // Migrazione per vocabolario 11 -> 12: carica per nome e conserva il nuovo token ? inizializzato localmente.
@@ -1648,6 +1868,16 @@ bool Engine::loadCheckpoint(const std::string&dir){
             if(!w) return false;
             loadedGoal2.step=static_cast<int>(goal2_step);
         }
+        Goal3MemoryBrain loadedGoal3(seed);
+        if(ver>=8){
+            uint32_t goal3_step=0,goal3_w=0,goal3_b=0;
+            w.read((char*)&goal3_step,4); w.read((char*)&goal3_w,4); w.read((char*)&goal3_b,4);
+            if(goal3_w!=loadedGoal3.w.size() || goal3_b!=loadedGoal3.b.size()) return false;
+            w.read((char*)loadedGoal3.w.data(),goal3_w*sizeof(float));
+            w.read((char*)loadedGoal3.b.data(),goal3_b*sizeof(float));
+            if(!w) return false;
+            loadedGoal3.step=static_cast<int>(goal3_step);
+        }
         impl_->seed=seed;
         impl_->curriculum=static_cast<int>(level);
         impl_->curriculum_start_step=static_cast<int>(start_step);
@@ -1657,6 +1887,8 @@ bool Engine::loadCheckpoint(const std::string&dir){
         impl_->goal1data=Goal1Dataset(seed);
         impl_->goal2=std::move(loadedGoal2);
         impl_->goal2data=Goal2Dataset(seed);
+        impl_->goal3=std::move(loadedGoal3);
+        impl_->goal3data=Goal3Dataset(seed);
         return true;
     }catch(...){return false;}
 }
@@ -1670,6 +1902,7 @@ std::string Engine::statusJson() const{
       <<",\"retention_l0_accuracy\":"<<r0.answer_accuracy<<",\"retention_l1_accuracy\":"<<r1.answer_accuracy<<",\"retention_l2_accuracy\":"<<r2.answer_accuracy<<",\"retention_l3_accuracy\":"<<r3.answer_accuracy<<",\"retention_l4_accuracy\":"<<r4.answer_accuracy
       <<",\"goal1_step\":"<<impl_->goal1.step<<",\"goal1_validation_accuracy\":"<<impl_->goal1.evaluate(impl_->goal1data.val).answer_accuracy
       <<",\"goal2_step\":"<<impl_->goal2.step<<",\"goal2_validation_accuracy\":"<<impl_->goal2.evaluate(impl_->goal2data.val).answer_accuracy
+      <<",\"goal3_step\":"<<impl_->goal3.step<<",\"goal3_validation_accuracy\":"<<impl_->goal3.evaluate(impl_->goal3data.val).answer_accuracy
       <<",\"pretrained\":false}";
     return s.str();
 }

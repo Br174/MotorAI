@@ -52,6 +52,15 @@ jobs:
             -o /tmp/motorai_goal2_smoke
           /tmp/motorai_goal2_smoke
 
+      - name: Verify Mini-AI Goal3 memory benchmark
+        id: goal3_gate
+        continue-on-error: true
+        run: |
+          g++ -std=c++20 -O2 -pthread -Iandroid/app/src/main/cpp \
+            tools/goal3_smoke.cpp android/app/src/main/cpp/motorai_core.cpp \
+            -o /tmp/motorai_goal3_smoke
+          /tmp/motorai_goal3_smoke
+
       - name: Verify background Auto-Training handoff
         run: |
           grep -q "scheduleKick" android/app/src/main/java/it/motorai/seed/MotorAIBackgroundJobService.java
@@ -78,6 +87,9 @@ jobs:
           grep -q "class MiniAiTrainingCoordinator" android/app/src/main/java/it/motorai/seed/MiniAiTrainingCoordinator.java
           grep -q "ChatActivity" android/app/src/main/AndroidManifest.xml
           grep -q "TrainingActivity" android/app/src/main/AndroidManifest.xml
+          grep -q "nativeGoal3TrainChunk" android/app/src/main/java/it/motorai/seed/MainActivity.java
+          grep -q "runGoal3Chunk" android/app/src/main/java/it/motorai/seed/MotorAIBackgroundJobService.java
+          grep -q "class ConversationMemory" android/app/src/main/java/it/motorai/seed/ConversationMemory.java
 
       - name: Set up JDK 17
         uses: actions/setup-java@v5
@@ -108,10 +120,10 @@ jobs:
         run: gradle --no-daemon --stacktrace assembleDebug
 
       - name: Upload MotorAI APK
-        if: steps.native_gate.outcome == 'success' && steps.goal1_gate.outcome == 'success' && steps.goal2_gate.outcome == 'success' && steps.android_build.outcome == 'success'
+        if: steps.native_gate.outcome == 'success' && steps.goal1_gate.outcome == 'success' && steps.goal2_gate.outcome == 'success' && steps.goal3_gate.outcome == 'success' && steps.android_build.outcome == 'success'
         uses: actions/upload-artifact@v6
         with:
-          name: MotorAI-Seed013-debug
+          name: MotorAI-Seed014-debug
           path: android/app/build/outputs/apk/debug/*.apk
           if-no-files-found: error
           retention-days: 14
@@ -122,10 +134,12 @@ jobs:
           echo "Native curriculum: ${{ steps.native_gate.outcome }}"
           echo "Mini-AI Goal1: ${{ steps.goal1_gate.outcome }}"
           echo "Mini-AI Goal2: ${{ steps.goal2_gate.outcome }}"
+          echo "Mini-AI Goal3: ${{ steps.goal3_gate.outcome }}"
           echo "Android build: ${{ steps.android_build.outcome }}"
           test "${{ steps.native_gate.outcome }}" = "success"
           test "${{ steps.goal1_gate.outcome }}" = "success"
           test "${{ steps.goal2_gate.outcome }}" = "success"
+          test "${{ steps.goal3_gate.outcome }}" = "success"
           test "${{ steps.android_build.outcome }}" = "success"
 
 # Seed004 final validation trigger

@@ -88,6 +88,7 @@ public final class MotorAIBridgeClient {
             int activeGoal = MiniAiGoals.activeGoalIndex(context);
             out.put("miniAiGoal1Percent", MiniAiGoals.percent(context, 0));
             out.put("miniAiGoal2Percent", MiniAiGoals.percent(context, 1));
+            out.put("miniAiGoal3Percent", MiniAiGoals.percent(context, 2));
             out.put("miniAiTotalPercent", MiniAiGoals.totalPercent(context));
             out.put("miniAiCompletedGoals", MiniAiGoals.completedCount(context));
             out.put("miniAiActiveGoal", activeGoal + 1);
@@ -103,7 +104,7 @@ public final class MotorAIBridgeClient {
             out.put("failures", failures == null ? "" : failures);
             out.put("status", status == null ? "" : status);
             out.put("deviceTimestamp", System.currentTimeMillis());
-            out.put("bridgeVersion", 3);
+            out.put("bridgeVersion", 4);
             out.put("$process_person_profile", false);
         } catch (Exception ignored) {
         }

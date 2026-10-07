@@ -39,6 +39,13 @@ struct Goal2TrainResult {
     double elapsed_seconds = 0.0;
 };
 
+struct Goal3TrainResult {
+    int steps_completed = 0;
+    Metrics train;
+    Metrics validation;
+    double elapsed_seconds = 0.0;
+};
+
 class Engine {
 public:
     explicit Engine(uint32_t seed = 174);
@@ -87,6 +94,15 @@ public:
     int goal2Step() const;
     int goal2ParameterCount() const;
     std::string respondGoal2(const std::string& text) const;
+
+    // Mini-AI Goal 3: recognize conversational memory operations and slots.
+    Metrics evaluateGoal3Train();
+    Metrics evaluateGoal3Validation();
+    Metrics evaluateGoal3Test();
+    Goal3TrainResult trainGoal3(int steps, int batch_size = 24, float lr = 0.08f);
+    int goal3Step() const;
+    int goal3ParameterCount() const;
+    std::string classifyGoal3(const std::string& text) const;
 
 private:
     class Impl;
