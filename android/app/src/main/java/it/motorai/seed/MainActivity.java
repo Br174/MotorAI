@@ -9,6 +9,8 @@ import android.content.SharedPreferences;
 import android.graphics.Typeface;
 import android.os.BatteryManager;
 import android.os.Bundle;
+import android.os.Handler;
+import android.os.Looper;
 import android.view.View;
 import android.widget.Button;
 import android.widget.EditText;
@@ -56,9 +58,35 @@ public class MainActivity extends Activity {
     private TextView capabilityNow;
     private TextView learningNow;
     private TextView latestProgress;
+    private TextView liveIndicator;
+    private TextView evolutionRangeLabel;
     private static final long DIAGNOSTIC_INTERVAL_MS = 20L * 60L * 1000L;
+    private static final long RANGE_HOUR_MS = 60L * 60L * 1000L;
+    private static final long RANGE_DAY_MS = 24L * RANGE_HOUR_MS;
+    private static final long RANGE_WEEK_MS = 7L * RANGE_DAY_MS;
+    private static final long RANGE_MONTH_MS = 30L * RANGE_DAY_MS;
+    private static final long RANGE_YEAR_MS = 365L * RANGE_DAY_MS;
     private static final AtomicBoolean UI_ACTIVE = new AtomicBoolean(false);
     private final AtomicBoolean training = new AtomicBoolean(false);
+    private final Handler heartbeatHandler = new Handler(Looper.getMainLooper());
+    private long evolutionRangeMs = -1L;
+    private int heartbeatTick = 0;
+    private volatile int latestUiStep = -1;
+    private final Runnable heartbeat = new Runnable() {
+        @Override public void run() {
+            if (!UI_ACTIVE.get() || liveIndicator == null) return;
+            heartbeatTick++;
+            boolean accepted = getSharedPreferences("motorai_evolution", MODE_PRIVATE)
+                    .getBoolean("l5_accepted", false);
+            String mode = training.get() ? "TRAINING"
+                    : (accepted ? "L5 completato" : "in attesa");
+            String lamp = (heartbeatTick % 2 == 0) ? "🟢" : "⚪";
+            String step = latestUiStep >= 0 ? " · step " + latestUiStep : "";
+            liveIndicator.setText(lamp + " MotorAI viva · " + mode + step
+                    + " · battito " + heartbeatTick + " s");
+            heartbeatHandler.postDelayed(this, 1000L);
+        }
+    };
 
     public static boolean isUiActive() { return UI_ACTIVE.get(); }
 
@@ -89,7 +117,7 @@ public class MainActivity extends Activity {
         super.onCreate(stateBundle);
         UI_ACTIVE.set(true);
         MotorAIBackgroundJobService.schedule(this);
-        setTitle("MotorAI Seed 011R1");
+        setTitle("MotorAI Seed 011R2");
 
         ScrollView scroll = new ScrollView(this);
         LinearLayout root = new LinearLayout(this);
@@ -97,7 +125,7 @@ public class MainActivity extends Activity {
         root.setPadding(20, 34, 20, 30);
         scroll.addView(root);
 
-        root.addView(text("MotorAI Seed 011R1", 28, true));
+        root.addView(text("MotorAI Seed 011R2", 28, true));
         root.addView(text("Cervello: Transformer causale nativo C++ · pesi iniziali casuali · nessun modello preaddestrato", 15, false));
         root.addView(text("Curriculum: L0–L4 consolidati → Auto-Training V1 → L5 uguaglianza adiacente", 14, false));
         root.addView(text("Auto-Training V1: genera gli esercizi, addestra, valida, controlla le memorie, salva checkpoint e fa rollback automaticamente. L5 impara una nuova posizione relazionale: nel primo gradino autonomo confronta i primi due simboli a/b e impara a ignorare un terzo simbolo distrattore da a a z, separato fra TRAIN, VALIDATION e TEST. Il canale neurale L5 è separato da L4.", 14, false));
@@ -106,10 +134,12 @@ public class MainActivity extends Activity {
         curriculum = text("Livello: —", 15, true);
         metrics = text("Metriche: —", 15, false);
         device = text("Dispositivo: —", 14, false);
+        liveIndicator = text("🟢 MotorAI viva · inizializzazione…", 14, true);
         root.addView(state);
         root.addView(curriculum);
         root.addView(metrics);
         root.addView(device);
+        root.addView(liveIndicator);
         root.addView(text("🌙 Auto-Training persistente: attivo quando Android lo risveglia e il telefono è in carica", 13, false));
 
         root.addView(text("📈 Evoluzione MotorAI", 18, true));
@@ -118,6 +148,36 @@ public class MainActivity extends Activity {
         evolutionView = new EvolutionView(this);
         root.addView(evolutionView, new LinearLayout.LayoutParams(
                 LinearLayout.LayoutParams.MATCH_PARENT, dp(250)));
+
+        evolutionRangeLabel = text("Intervallo grafico: Tutto", 13, true);
+        root.addView(evolutionRangeLabel);
+
+        LinearLayout rangeRow1 = new LinearLayout(this);
+        rangeRow1.setOrientation(LinearLayout.HORIZONTAL);
+        Button rangeHour = button("1 ora");
+        Button rangeDay = button("1 giorno");
+        Button rangeWeek = button("1 settimana");
+        rangeRow1.addView(rangeHour, new LinearLayout.LayoutParams(0, LinearLayout.LayoutParams.WRAP_CONTENT, 1));
+        rangeRow1.addView(rangeDay, new LinearLayout.LayoutParams(0, LinearLayout.LayoutParams.WRAP_CONTENT, 1));
+        rangeRow1.addView(rangeWeek, new LinearLayout.LayoutParams(0, LinearLayout.LayoutParams.WRAP_CONTENT, 1));
+        root.addView(rangeRow1);
+
+        LinearLayout rangeRow2 = new LinearLayout(this);
+        rangeRow2.setOrientation(LinearLayout.HORIZONTAL);
+        Button rangeMonth = button("1 mese");
+        Button rangeYear = button("1 anno");
+        Button rangeAll = button("Tutto");
+        rangeRow2.addView(rangeMonth, new LinearLayout.LayoutParams(0, LinearLayout.LayoutParams.WRAP_CONTENT, 1));
+        rangeRow2.addView(rangeYear, new LinearLayout.LayoutParams(0, LinearLayout.LayoutParams.WRAP_CONTENT, 1));
+        rangeRow2.addView(rangeAll, new LinearLayout.LayoutParams(0, LinearLayout.LayoutParams.WRAP_CONTENT, 1));
+        root.addView(rangeRow2);
+
+        rangeHour.setOnClickListener(v -> setEvolutionRange(RANGE_HOUR_MS, "Ultima ora"));
+        rangeDay.setOnClickListener(v -> setEvolutionRange(RANGE_DAY_MS, "Ultimo giorno"));
+        rangeWeek.setOnClickListener(v -> setEvolutionRange(RANGE_WEEK_MS, "Ultima settimana"));
+        rangeMonth.setOnClickListener(v -> setEvolutionRange(RANGE_MONTH_MS, "Ultimo mese"));
+        rangeYear.setOnClickListener(v -> setEvolutionRange(RANGE_YEAR_MS, "Ultimo anno"));
+        rangeAll.setOnClickListener(v -> setEvolutionRange(-1L, "Tutto"));
 
         capabilityNow = text("🧠 Cosa sa fare adesso: —", 15, true);
         learningNow = text("🔄 Cosa sta imparando: —", 14, false);
@@ -279,7 +339,11 @@ public class MainActivity extends Activity {
                         ui(() -> state.setText("Stato: checkpoint L4 ripreso · verifica necessaria"));
                     }
                 } else if (resumed && level == 5) {
-                    ui(() -> state.setText("Stato: Auto-Training L5 ripreso · premi Auto-Training per continuare"));
+                    boolean accepted = getSharedPreferences("motorai_evolution", MODE_PRIVATE)
+                            .getBoolean("l5_accepted", false);
+                    ui(() -> state.setText(accepted
+                            ? "Stato: L5 già consolidato · Auto-Training V1 completato"
+                            : "Stato: Auto-Training L5 ripreso · premi Auto-Training per continuare"));
                 } else if (resumed) {
                     ui(() -> state.setText("Stato: checkpoint ripreso automaticamente"));
                 } else {
@@ -371,6 +435,11 @@ public class MainActivity extends Activity {
 
                     rotateAndSaveCheckpoint();
 
+                    String manualProgress = String.format(Locale.ITALY,
+                            "Training manuale L%d · step %d · validation %.1f%%",
+                            level, step, afterValAcc * 100.0);
+                    recordEvolution(j, "", manualProgress, false);
+
                     if (afterValAcc > bestVal) bestVal = afterValAcc;
                     String line = formatTrainingMetrics(j);
                     ui(() -> metrics.setText(line));
@@ -433,6 +502,7 @@ public class MainActivity extends Activity {
 
     private String formatTrainingMetrics(JSONObject j) {
         int step = j.optInt("step", 0);
+        latestUiStep = step;
         int params = j.optInt("parameters", 9536);
         int level = j.optInt("curriculum", nativeCurriculum());
         double loss = j.optDouble("val_loss", Double.NaN);
@@ -493,7 +563,10 @@ public class MainActivity extends Activity {
 
                 if (level == 5 && evoPrefs.getBoolean("l5_accepted", false)) {
                     training.set(false);
-                    ui(() -> state.setText("Stato: L5 già consolidato · Auto-Training V1 completato"));
+                    ui(() -> {
+                        state.setText("Stato: L5 già consolidato · Auto-Training V1 completato");
+                        refreshMetrics();
+                    });
                     return;
                 }
 
@@ -609,10 +682,10 @@ public class MainActivity extends Activity {
                             "Auto-Training V1 · L5 passi %d · Val. %.1f%% · Memorie min. %.1f%%",
                             Math.max(0, step - start), acc * 100.0,
                             Math.min(Math.min(Math.min(r[0], r[1]), Math.min(r[2], r[3])), r[4]) * 100.0);
-                    if (Math.max(0, step - start) % 100 == 0) {
-                        recordEvolution(j, "L5 · " + Math.max(0, step - start) + " passi",
-                                "Sta imparando L5 in autonomia.", false);
-                    }
+                    int levelSteps = Math.max(0, step - start);
+                    String pointLabel = levelSteps % 100 == 0
+                            ? "L5 · " + levelSteps + " passi" : "";
+                    recordEvolution(j, pointLabel, progress, false);
                     ui(() -> {
                         state.setText("Stato: " + progress);
                         metrics.setText(formatTrainingMetrics(j));
@@ -763,7 +836,7 @@ public class MainActivity extends Activity {
             Guard g = readGuard();
 
             StringBuilder b = new StringBuilder();
-            b.append("MotorAI Seed 011R1\n");
+            b.append("MotorAI Seed 011R2\n");
             b.append("Snapshot: ").append(diagnosticsTimestamp()).append("\n");
             b.append("Motivo: ").append(reason).append("\n");
             b.append("Livello: L").append(level)
@@ -846,13 +919,17 @@ public class MainActivity extends Activity {
                     line = formatMetrics(j);
                 }
                 seedEvolutionHistoryIfNeeded();
+                EvolutionHistory.recordCurrentIfChanged(this, j, finalMetric,
+                        "Stato corrente", "Sincronizzazione automatica della schermata");
                 maybeDiagnosticSnapshot(j, "Controllo metriche");
                 final List<EvolutionView.Point> pts = loadEvolutionPoints();
                 Guard g = readGuard();
                 final JSONObject snapshot = j;
+                latestUiStep = j.optInt("step", latestUiStep);
                 ui(() -> {
                     metrics.setText(line);
                     device.setText(g.description);
+                    evolutionView.setTimeAxis(evolutionRangeMs > 0L);
                     evolutionView.setPoints(pts);
                     updateEvolutionTexts(snapshot, null, finalMetric);
                 });
@@ -864,6 +941,7 @@ public class MainActivity extends Activity {
 
     private String formatMetrics(JSONObject j) {
         int step = j.optInt("step", 0);
+        latestUiStep = step;
         int params = j.optInt("parameters", 9536);
         int level = j.optInt("curriculum", nativeCurriculum());
         double loss = j.has("test_loss") ? j.optDouble("test_loss") : Double.NaN;
@@ -923,54 +1001,19 @@ public class MainActivity extends Activity {
     }
 
     private synchronized void seedEvolutionHistoryIfNeeded() {
-        File f = evolutionHistoryFile();
-        if (f.exists() && f.length() > 0) return;
-        File parent = f.getParentFile();
-        if (parent != null && !parent.exists()) parent.mkdirs();
-        try (FileWriter w = new FileWriter(f, false)) {
-            // Solo milestone già verificati sul dispositivo.
-            writeEvolutionLine(w, 1700, 95.8, 100.0,
-                    evolutionIndex(2, 0.958, 1.0), "Seed 008", "Ha consolidato L2");
-            writeEvolutionLine(w, 1760, 100.0, 95.6,
-                    evolutionIndex(3, 1.0, 0.956), "Seed 009", "Ha consolidato L3");
-            writeEvolutionLine(w, 2960, 98.5, 95.6,
-                    evolutionIndex(4, 0.985, 0.956), "Seed 010", "Ha consolidato L4");
-        } catch (Exception ignored) {
-        }
-    }
-
-    private void writeEvolutionLine(FileWriter w, int step, double learning, double memory,
-                                    double evolution, String label, String capability) throws Exception {
-        String safeLabel = label.replace("\t", " ").replace("\n", " ");
-        String safeCap = capability.replace("\t", " ").replace("\n", " ");
-        w.write(step + "\t" + String.format(Locale.US, "%.4f", learning) + "\t"
-                + String.format(Locale.US, "%.4f", memory) + "\t"
-                + String.format(Locale.US, "%.4f", evolution) + "\t"
-                + safeLabel + "\t" + safeCap + "\n");
+        EvolutionHistory.seedIfNeeded(this);
     }
 
     private synchronized void recordEvolution(JSONObject j, String label, String progress, boolean useTest) {
         try {
-            seedEvolutionHistoryIfNeeded();
-            int step = j.optInt("step", 0);
-            int level = j.optInt("curriculum", nativeCurriculum());
-            double learning;
-            if (useTest && j.has("test_accuracy")) learning = j.optDouble("test_accuracy", 0.0);
-            else learning = j.optDouble("val_accuracy", 0.0);
-            double memory = minRetention(j, level);
-            double evo = evolutionIndex(level, learning, memory);
-
-            File f = evolutionHistoryFile();
-            try (FileWriter w = new FileWriter(f, true)) {
-                writeEvolutionLine(w, step, learning * 100.0, memory * 100.0,
-                        evo, label, progress);
-            }
+            EvolutionHistory.record(this, j, useTest, label, progress);
             getSharedPreferences("motorai_evolution", MODE_PRIVATE).edit()
                     .putString("last_progress", progress).apply();
 
             final List<EvolutionView.Point> pts = loadEvolutionPoints();
             final JSONObject snapshot = j;
             ui(() -> {
+                evolutionView.setTimeAxis(evolutionRangeMs > 0L);
                 evolutionView.setPoints(pts);
                 updateEvolutionTexts(snapshot, progress, useTest);
             });
@@ -979,24 +1022,33 @@ public class MainActivity extends Activity {
     }
 
     private synchronized List<EvolutionView.Point> loadEvolutionPoints() {
-        ArrayList<EvolutionView.Point> out = new ArrayList<>();
-        File f = evolutionHistoryFile();
-        if (!f.exists()) return out;
-        try (BufferedReader r = new BufferedReader(new FileReader(f))) {
-            String line;
-            while ((line = r.readLine()) != null) {
-                String[] p = line.split("\\t", 6);
-                if (p.length < 5) continue;
-                out.add(new EvolutionView.Point(
-                        Integer.parseInt(p[0]),
-                        Float.parseFloat(p[1]),
-                        Float.parseFloat(p[2]),
-                        Float.parseFloat(p[3]),
-                        p[4]));
-            }
-        } catch (Exception ignored) {
-        }
-        return out;
+        return EvolutionHistory.load(this, evolutionRangeMs);
+    }
+
+    private void setEvolutionRange(long rangeMs, String label) {
+        evolutionRangeMs = rangeMs;
+        evolutionRangeLabel.setText("Intervallo grafico: " + label);
+        refreshEvolutionChart();
+    }
+
+    private void refreshEvolutionChart() {
+        runAsync(() -> {
+            final List<EvolutionView.Point> pts = loadEvolutionPoints();
+            ui(() -> {
+                evolutionView.setTimeAxis(evolutionRangeMs > 0L);
+                evolutionView.setPoints(pts);
+            });
+        });
+    }
+
+    private void startHeartbeat() {
+        heartbeatHandler.removeCallbacks(heartbeat);
+        heartbeatTick = 0;
+        heartbeatHandler.post(heartbeat);
+    }
+
+    private void stopHeartbeat() {
+        heartbeatHandler.removeCallbacks(heartbeat);
     }
 
     private String capabilityList(int acceptedLevel) {
@@ -1099,10 +1151,13 @@ public class MainActivity extends Activity {
         super.onStart();
         UI_ACTIVE.set(true);
         MotorAIBackgroundJobService.schedule(this);
+        startHeartbeat();
+        refreshMetrics();
     }
 
     @Override protected void onStop() {
         UI_ACTIVE.set(false);
+        stopHeartbeat();
         super.onStop();
         if (training.get()) {
             stopTraining("App in background");
