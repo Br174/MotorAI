@@ -53,6 +53,13 @@ struct Goal4TrainResult {
     double elapsed_seconds = 0.0;
 };
 
+struct Goal5TrainResult {
+    int steps_completed = 0;
+    Metrics train;
+    Metrics validation;
+    double elapsed_seconds = 0.0;
+};
+
 class Engine {
 public:
     explicit Engine(uint32_t seed = 174);
@@ -119,6 +126,15 @@ public:
     int goal4Step() const;
     int goal4ParameterCount() const;
     std::string solveGoal4(const std::string& text) const;
+
+    // Mini-AI Goal 5: learn whether a request is locally answerable or needs verification.
+    Metrics evaluateGoal5Train();
+    Metrics evaluateGoal5Validation();
+    Metrics evaluateGoal5Test();
+    Goal5TrainResult trainGoal5(int steps, int batch_size = 24, float lr = 0.08f);
+    int goal5Step() const;
+    int goal5ParameterCount() const;
+    std::string classifyGoal5(const std::string& text) const;
 
 private:
     class Impl;
