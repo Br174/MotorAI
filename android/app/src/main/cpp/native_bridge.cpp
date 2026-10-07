@@ -177,6 +177,51 @@ Java_it_motorai_seed_MainActivity_nativeGoal1Classify(JNIEnv* env, jclass, jstri
     return js(env,g_engine.classifyGoal1(toString(env,text)));
 }
 
+
+extern "C" JNIEXPORT jstring JNICALL
+Java_it_motorai_seed_MainActivity_nativeGoal2Evaluate(JNIEnv* env, jclass) {
+    std::lock_guard<std::mutex> g(g_engine_call_mu);
+    auto tr=g_engine.evaluateGoal2Train();
+    auto va=g_engine.evaluateGoal2Validation();
+    std::string s="{\"goal2_step\":"+std::to_string(g_engine.goal2Step())+
+        ",\"goal2_parameters\":"+std::to_string(g_engine.goal2ParameterCount())+
+        ",\"train_loss\":"+std::to_string(tr.loss)+
+        ",\"train_accuracy\":"+std::to_string(tr.answer_accuracy)+
+        ",\"validation_loss\":"+std::to_string(va.loss)+
+        ",\"validation_accuracy\":"+std::to_string(va.answer_accuracy)+"}";
+    return js(env,s);
+}
+
+extern "C" JNIEXPORT jstring JNICALL
+Java_it_motorai_seed_MainActivity_nativeGoal2TrainChunk(JNIEnv* env, jclass, jint steps) {
+    std::lock_guard<std::mutex> g(g_engine_call_mu);
+    auto r=g_engine.trainGoal2(static_cast<int>(steps),16,0.12f);
+    std::string s="{\"steps_completed\":"+std::to_string(r.steps_completed)+
+        ",\"goal2_step\":"+std::to_string(g_engine.goal2Step())+
+        ",\"elapsed_seconds\":"+std::to_string(r.elapsed_seconds)+
+        ",\"train_loss\":"+std::to_string(r.train.loss)+
+        ",\"train_accuracy\":"+std::to_string(r.train.answer_accuracy)+
+        ",\"validation_loss\":"+std::to_string(r.validation.loss)+
+        ",\"validation_accuracy\":"+std::to_string(r.validation.answer_accuracy)+"}";
+    return js(env,s);
+}
+
+extern "C" JNIEXPORT jstring JNICALL
+Java_it_motorai_seed_MainActivity_nativeGoal2FinalTest(JNIEnv* env, jclass) {
+    std::lock_guard<std::mutex> g(g_engine_call_mu);
+    auto te=g_engine.evaluateGoal2Test();
+    std::string s="{\"goal2_step\":"+std::to_string(g_engine.goal2Step())+
+        ",\"test_loss\":"+std::to_string(te.loss)+
+        ",\"test_accuracy\":"+std::to_string(te.answer_accuracy)+"}";
+    return js(env,s);
+}
+
+extern "C" JNIEXPORT jstring JNICALL
+Java_it_motorai_seed_MainActivity_nativeGoal2Respond(JNIEnv* env, jclass, jstring text) {
+    std::lock_guard<std::mutex> g(g_engine_call_mu);
+    return js(env,g_engine.respondGoal2(toString(env,text)));
+}
+
 extern "C" JNIEXPORT void JNICALL
 Java_it_motorai_seed_MainActivity_nativeSetCurriculum(JNIEnv*, jclass, jint level) {
     std::lock_guard<std::mutex> g(g_engine_call_mu);

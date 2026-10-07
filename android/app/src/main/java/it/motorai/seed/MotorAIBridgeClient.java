@@ -85,18 +85,25 @@ public final class MotorAIBridgeClient {
             out.put("lastProgress", evo.getString("last_progress", "nessuno"));
 
             MiniAiGoals.seedIfNeeded(context);
+            int activeGoal = MiniAiGoals.activeGoalIndex(context);
             out.put("miniAiGoal1Percent", MiniAiGoals.percent(context, 0));
+            out.put("miniAiGoal2Percent", MiniAiGoals.percent(context, 1));
             out.put("miniAiTotalPercent", MiniAiGoals.totalPercent(context));
             out.put("miniAiCompletedGoals", MiniAiGoals.completedCount(context));
-            out.put("miniAiGoal1Status", MiniAiGoals.status(context, 0));
-            out.put("miniAiGoal1Evidence", MiniAiGoals.evidence(context, 0));
+            out.put("miniAiActiveGoal", activeGoal + 1);
+            out.put("miniAiActiveGoalPercent", MiniAiGoals.percent(context, activeGoal));
+            out.put("miniAiActiveGoalStatus", MiniAiGoals.status(context, activeGoal));
+            out.put("miniAiActiveGoalEvidence", MiniAiGoals.evidence(context, activeGoal));
+            out.put("miniAiTrainingState", MiniAiTrainingStatus.state(context));
+            out.put("miniAiTrainingStep", MiniAiTrainingStatus.step(context));
+            out.put("miniAiTrainingValidation", MiniAiTrainingStatus.validation(context));
 
             SharedPreferences diag = context.getSharedPreferences("motorai_diagnostics", Context.MODE_PRIVATE);
             String failures = diag.getString("failures", "");
             out.put("failures", failures == null ? "" : failures);
             out.put("status", status == null ? "" : status);
             out.put("deviceTimestamp", System.currentTimeMillis());
-            out.put("bridgeVersion", 2);
+            out.put("bridgeVersion", 3);
             out.put("$process_person_profile", false);
         } catch (Exception ignored) {
         }

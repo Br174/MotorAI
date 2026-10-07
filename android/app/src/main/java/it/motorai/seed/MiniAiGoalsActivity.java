@@ -18,8 +18,10 @@ public class MiniAiGoalsActivity extends Activity {
     private LinearLayout goalsRoot;
     private TextView totalText;
     private ProgressBar totalBar;
+    private TextView activeLabel;
     private TextView activeTitle;
     private TextView activeStatus;
+    private TextView activeDescription;
     private ProgressBar activeBar;
 
     private TextView text(String value, int sp, boolean bold) {
@@ -100,7 +102,8 @@ public class MiniAiGoalsActivity extends Activity {
         root.addView(foundationCard);
 
         LinearLayout activeCard = card(Color.rgb(246,250,255));
-        activeCard.addView(text("🎯 Obiettivo attivo 1/10",14,false));
+        activeLabel = text("🎯 Obiettivo attivo 1/10",14,false);
+        activeCard.addView(activeLabel);
         activeTitle = text("Capire una richiesta normale",20,true);
         activeCard.addView(activeTitle);
         activeBar = new ProgressBar(this,null,android.R.attr.progressBarStyleHorizontal);
@@ -109,8 +112,8 @@ public class MiniAiGoalsActivity extends Activity {
                 LinearLayout.LayoutParams.MATCH_PARENT,dp(20)));
         activeStatus = text("0% · non iniziato",14,true);
         activeCard.addView(activeStatus);
-        activeCard.addView(text(
-                "Comprendere semplici richieste in italiano e capire cosa viene chiesto.",13,false));
+        activeDescription = text(MiniAiGoals.DESCRIPTIONS[0],13,false);
+        activeCard.addView(activeDescription);
         root.addView(activeCard);
 
         root.addView(text("Tutti gli obiettivi",20,true));
@@ -144,9 +147,11 @@ public class MiniAiGoalsActivity extends Activity {
 
         int active = MiniAiGoals.activeGoalIndex(this);
         int activePercent = MiniAiGoals.percent(this, active);
-        activeTitle.setText((active + 1) + "/10 · " + MiniAiGoals.TITLES[active]);
+        activeLabel.setText("🎯 Obiettivo attivo " + (active + 1) + "/10");
+        activeTitle.setText(MiniAiGoals.TITLES[active]);
         activeBar.setProgress(activePercent);
         activeStatus.setText(activePercent + "% · " + MiniAiGoals.status(this, active));
+        activeDescription.setText(MiniAiGoals.DESCRIPTIONS[active]);
 
         goalsRoot.removeAllViews();
         for(int i=0;i<MiniAiGoals.TITLES.length;i++){
