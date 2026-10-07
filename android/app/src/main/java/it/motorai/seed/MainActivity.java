@@ -18,7 +18,12 @@ import android.widget.TextView;
 
 import org.json.JSONObject;
 
+import java.io.BufferedReader;
 import java.io.File;
+import java.io.FileReader;
+import java.io.FileWriter;
+import java.util.ArrayList;
+import java.util.List;
 import java.util.Locale;
 import java.util.concurrent.atomic.AtomicBoolean;
 
@@ -46,6 +51,11 @@ public class MainActivity extends Activity {
     private Button learn;
     private Button pause;
     private Button autoTrain;
+    private EvolutionView evolutionView;
+    private TextView evolutionSummary;
+    private TextView capabilityNow;
+    private TextView learningNow;
+    private TextView latestProgress;
     private final AtomicBoolean training = new AtomicBoolean(false);
 
     private File checkpointRoot() { return new File(getFilesDir(), "motorai/checkpoints"); }
@@ -53,6 +63,7 @@ public class MainActivity extends Activity {
     private File previousCheckpoint() { return new File(checkpointRoot(), "previous"); }
     private File tempCheckpoint() { return new File(checkpointRoot(), "tmp"); }
     private File autoBaselineCheckpoint() { return new File(checkpointRoot(), "autotrain-baseline"); }
+    private File evolutionHistoryFile() { return new File(getFilesDir(), "motorai/evolution.tsv"); }
 
     private TextView text(String value, int sp, boolean bold) {
         TextView v = new TextView(this);
@@ -93,6 +104,20 @@ public class MainActivity extends Activity {
         root.addView(curriculum);
         root.addView(metrics);
         root.addView(device);
+
+        root.addView(text("📈 Evoluzione MotorAI", 18, true));
+        evolutionSummary = text("Indice Evoluzione: —", 14, true);
+        root.addView(evolutionSummary);
+        evolutionView = new EvolutionView(this);
+        root.addView(evolutionView, new LinearLayout.LayoutParams(
+                LinearLayout.LayoutParams.MATCH_PARENT, dp(250)));
+
+        capabilityNow = text("🧠 Cosa sa fare adesso: —", 15, true);
+        learningNow = text("🔄 Cosa sta imparando: —", 14, false);
+        latestProgress = text("🎆 Ultimo progresso: —", 14, false);
+        root.addView(capabilityNow);
+        root.addView(learningNow);
+        root.addView(latestProgress);
 
         autoTrain = button("🤖 Auto-Training");
         root.addView(autoTrain);
@@ -180,6 +205,9 @@ public class MainActivity extends Activity {
                 deleteTree(currentCheckpoint());
                 deleteTree(previousCheckpoint());
                 getSharedPreferences("motorai_ui", MODE_PRIVATE).edit().remove("last_answer").apply();
+                getSharedPreferences("motorai_evolution", MODE_PRIVATE).edit()
+                        .putBoolean("l5_accepted", false)
+                        .putString("last_progress", "Reset manuale: nuova traiettoria da pesi casuali.").apply();
                 ui(() -> {
                     answer.setText("Risposta MotorAI: —");
                     state.setText("Stato: nuovi pesi casuali inizializzati");
@@ -244,7 +272,7 @@ public class MainActivity extends Activity {
                 } else if (resumed) {
                     ui(() -> state.setText("Stato: checkpoint ripreso automaticamente"));
                 } else {
-                    ui(() -> state.setText("Stato: Seed 010 pronta da pesi casuali"));
+                    ui(() -> state.setText("Stato: Seed 011 pronta da pesi casuali"));
                 }
             } catch (Exception e) {
                 ui(() -> state.setText(resumed ? "Stato: checkpoint ripreso" : "Stato: Seed 010 pronta"));
@@ -442,6 +470,13 @@ public class MainActivity extends Activity {
         runAsync(() -> {
             try {
                 int level = nativeCurriculum();
+                SharedPreferences evoPrefs = getSharedPreferences("motorai_evolution", MODE_PRIVATE);
+
+                if (level == 5 && evoPrefs.getBoolean("l5_accepted", false)) {
+                    training.set(false);
+                    ui(() -> state.setText("Stato: L5 già consolidato · Auto-Training V1 completato"));
+                    return;
+                }
 
                 if (level < 4) {
                     training.set(false);
@@ -471,6 +506,9 @@ public class MainActivity extends Activity {
 
                     nativeSetCurriculum(5);
                     rotateAndSaveCheckpoint();
+                    JSONObject startState = new JSONObject(nativeTrainingEvaluate());
+                    recordEvolution(startState, "Inizio L5",
+                            "Auto-Training ha scelto e avviato L5: uguaglianza tra primo e ultimo simbolo.", false);
                     ui(() -> state.setText("Stato: Auto-Training V1 · Livello 5 avviato automaticamente"));
                 }
 
@@ -527,6 +565,9 @@ public class MainActivity extends Activity {
 
                     if (regression || forgetting) {
                         nativeLoadCheckpoint(currentCheckpoint().getAbsolutePath());
+                        JSONObject rolled = new JSONObject(nativeTrainingEvaluate());
+                        recordEvolution(rolled, "Rollback",
+                                "Regressione rilevata: MotorAI è tornata automaticamente all'ultimo checkpoint sicuro.", false);
                         training.set(false);
                         ui(() -> {
                             state.setText("Stato: Auto-Training · regressione rilevata, rollback automatico");
@@ -545,9 +586,14 @@ public class MainActivity extends Activity {
                             "Auto-Training V1 · L5 passi %d · Val. %.1f%% · Memorie min. %.1f%%",
                             Math.max(0, step - start), acc * 100.0,
                             Math.min(Math.min(Math.min(r[0], r[1]), Math.min(r[2], r[3])), r[4]) * 100.0);
+                    if (Math.max(0, step - start) % 100 == 0) {
+                        recordEvolution(j, "L5 · " + Math.max(0, step - start) + " passi",
+                                "Sta imparando L5 in autonomia.", false);
+                    }
                     ui(() -> {
                         state.setText("Stato: " + progress);
                         metrics.setText(formatTrainingMetrics(j));
+                        updateEvolutionTexts(j, null, false);
                     });
 
                     if (stablePasses >= 4) {
@@ -562,6 +608,10 @@ public class MainActivity extends Activity {
 
                         if (finalOk) {
                             rotateAndSaveCheckpoint();
+                            getSharedPreferences("motorai_evolution", MODE_PRIVATE)
+                                    .edit().putBoolean("l5_accepted", true).apply();
+                            recordEvolution(fin, "L5 consolidato",
+                                    "Ha imparato a riconoscere se il primo e l'ultimo simbolo di una sequenza di 4 coincidono.", true);
                             training.set(false);
                             ui(() -> {
                                 state.setText(String.format(Locale.ITALY,
@@ -574,6 +624,11 @@ public class MainActivity extends Activity {
                                 nativeLoadCheckpoint(autoBaselineCheckpoint().getAbsolutePath());
                                 rotateAndSaveCheckpoint();
                             }
+                            getSharedPreferences("motorai_evolution", MODE_PRIVATE)
+                                    .edit().putBoolean("l5_accepted", false).apply();
+                            JSONObject rolled = new JSONObject(nativeTrainingEvaluate());
+                            recordEvolution(rolled, "Rollback TEST",
+                                    "Il TEST finale non ha confermato L5: rollback automatico alla Seed 010.", false);
                             training.set(false);
                             ui(() -> {
                                 state.setText("Stato: Auto-Training · TEST finale non superato, rollback alla Seed 010");
@@ -588,6 +643,11 @@ public class MainActivity extends Activity {
                             nativeLoadCheckpoint(autoBaselineCheckpoint().getAbsolutePath());
                             rotateAndSaveCheckpoint();
                         }
+                        getSharedPreferences("motorai_evolution", MODE_PRIVATE)
+                                .edit().putBoolean("l5_accepted", false).apply();
+                        JSONObject rolled = new JSONObject(nativeTrainingEvaluate());
+                        recordEvolution(rolled, "Rollback limite",
+                                "Limite di sicurezza raggiunto: rollback automatico alla Seed 010.", false);
                         training.set(false);
                         ui(() -> {
                             state.setText("Stato: Auto-Training · limite di sicurezza raggiunto, rollback alla Seed 010");
@@ -618,10 +678,29 @@ public class MainActivity extends Activity {
     private void refreshMetrics() {
         runAsync(() -> {
             try {
-                JSONObject j = new JSONObject(nativeEvaluate());
-                String line = formatMetrics(j);
+                int level = nativeCurriculum();
+                boolean l5Accepted = getSharedPreferences("motorai_evolution", MODE_PRIVATE)
+                        .getBoolean("l5_accepted", false);
+                JSONObject j;
+                String line;
+                boolean finalMetric = level < 5 || l5Accepted;
+                if (level >= 5 && !l5Accepted) {
+                    j = new JSONObject(nativeTrainingEvaluate());
+                    line = formatTrainingMetrics(j);
+                } else {
+                    j = new JSONObject(nativeEvaluate());
+                    line = formatMetrics(j);
+                }
+                seedEvolutionHistoryIfNeeded();
+                final List<EvolutionView.Point> pts = loadEvolutionPoints();
                 Guard g = readGuard();
-                ui(() -> { metrics.setText(line); device.setText(g.description); });
+                final JSONObject snapshot = j;
+                ui(() -> {
+                    metrics.setText(line);
+                    device.setText(g.description);
+                    evolutionView.setPoints(pts);
+                    updateEvolutionTexts(snapshot, null, finalMetric);
+                });
             } catch (Exception e) {
                 ui(() -> metrics.setText("Metriche non disponibili: " + e.getMessage()));
             }
@@ -667,6 +746,147 @@ public class MainActivity extends Activity {
         }
         return String.format(Locale.ITALY, "Passi totali: %d · L5 auto: %d · Parametri: %,d · L5 test loss: %.4f · L5 test: %.1f%% · Memoria L4: %.1f%% · L3: %.1f%% · L2: %.1f%% · L1: %.1f%% · L0: %.1f%%",
                 step, Math.max(0, step - startStep), params, loss, acc * 100.0, retentionL4 * 100.0, retentionL3 * 100.0, retentionL2 * 100.0, retentionL1 * 100.0, retentionL0 * 100.0);
+    }
+
+    private int dp(int value) {
+        return Math.round(value * getResources().getDisplayMetrics().density);
+    }
+
+    private double minRetention(JSONObject j, int level) {
+        double min = 1.0;
+        if (level >= 1) min = Math.min(min, j.optDouble("retention_l0_accuracy", 1.0));
+        if (level >= 2) min = Math.min(min, j.optDouble("retention_l1_accuracy", 1.0));
+        if (level >= 3) min = Math.min(min, j.optDouble("retention_l2_accuracy", 1.0));
+        if (level >= 4) min = Math.min(min, j.optDouble("retention_l3_accuracy", 1.0));
+        if (level >= 5) min = Math.min(min, j.optDouble("retention_l4_accuracy", 1.0));
+        return min;
+    }
+
+    private double evolutionIndex(int level, double learning, double memory) {
+        double curriculum = Math.min(1.0, (Math.max(0, level) + 1) / 6.0);
+        return 100.0 * (0.45 * learning + 0.35 * memory + 0.20 * curriculum);
+    }
+
+    private synchronized void seedEvolutionHistoryIfNeeded() {
+        File f = evolutionHistoryFile();
+        if (f.exists() && f.length() > 0) return;
+        File parent = f.getParentFile();
+        if (parent != null && !parent.exists()) parent.mkdirs();
+        try (FileWriter w = new FileWriter(f, false)) {
+            // Solo milestone già verificati sul dispositivo.
+            writeEvolutionLine(w, 1700, 95.8, 100.0,
+                    evolutionIndex(2, 0.958, 1.0), "Seed 008", "Ha consolidato L2");
+            writeEvolutionLine(w, 1760, 100.0, 95.6,
+                    evolutionIndex(3, 1.0, 0.956), "Seed 009", "Ha consolidato L3");
+            writeEvolutionLine(w, 2960, 98.5, 95.6,
+                    evolutionIndex(4, 0.985, 0.956), "Seed 010", "Ha consolidato L4");
+        } catch (Exception ignored) {
+        }
+    }
+
+    private void writeEvolutionLine(FileWriter w, int step, double learning, double memory,
+                                    double evolution, String label, String capability) throws Exception {
+        String safeLabel = label.replace("\t", " ").replace("\n", " ");
+        String safeCap = capability.replace("\t", " ").replace("\n", " ");
+        w.write(step + "\t" + String.format(Locale.US, "%.4f", learning) + "\t"
+                + String.format(Locale.US, "%.4f", memory) + "\t"
+                + String.format(Locale.US, "%.4f", evolution) + "\t"
+                + safeLabel + "\t" + safeCap + "\n");
+    }
+
+    private synchronized void recordEvolution(JSONObject j, String label, String progress, boolean useTest) {
+        try {
+            seedEvolutionHistoryIfNeeded();
+            int step = j.optInt("step", 0);
+            int level = j.optInt("curriculum", nativeCurriculum());
+            double learning;
+            if (useTest && j.has("test_accuracy")) learning = j.optDouble("test_accuracy", 0.0);
+            else learning = j.optDouble("val_accuracy", 0.0);
+            double memory = minRetention(j, level);
+            double evo = evolutionIndex(level, learning, memory);
+
+            File f = evolutionHistoryFile();
+            try (FileWriter w = new FileWriter(f, true)) {
+                writeEvolutionLine(w, step, learning * 100.0, memory * 100.0,
+                        evo, label, progress);
+            }
+            getSharedPreferences("motorai_evolution", MODE_PRIVATE).edit()
+                    .putString("last_progress", progress).apply();
+
+            final List<EvolutionView.Point> pts = loadEvolutionPoints();
+            final JSONObject snapshot = j;
+            ui(() -> {
+                evolutionView.setPoints(pts);
+                updateEvolutionTexts(snapshot, progress, useTest);
+            });
+        } catch (Exception ignored) {
+        }
+    }
+
+    private synchronized List<EvolutionView.Point> loadEvolutionPoints() {
+        ArrayList<EvolutionView.Point> out = new ArrayList<>();
+        File f = evolutionHistoryFile();
+        if (!f.exists()) return out;
+        try (BufferedReader r = new BufferedReader(new FileReader(f))) {
+            String line;
+            while ((line = r.readLine()) != null) {
+                String[] p = line.split("\\t", 6);
+                if (p.length < 5) continue;
+                out.add(new EvolutionView.Point(
+                        Integer.parseInt(p[0]),
+                        Float.parseFloat(p[1]),
+                        Float.parseFloat(p[2]),
+                        Float.parseFloat(p[3]),
+                        p[4]));
+            }
+        } catch (Exception ignored) {
+        }
+        return out;
+    }
+
+    private String capabilityList(int acceptedLevel) {
+        StringBuilder b = new StringBuilder("🧠 Cosa sa fare adesso");
+        if (acceptedLevel >= 0) b.append("\n✅ Copiare una sequenza breve");
+        if (acceptedLevel >= 1) b.append("\n✅ Invertire una coppia di simboli");
+        if (acceptedLevel >= 2) b.append("\n✅ Selezionare e duplicare il primo simbolo");
+        if (acceptedLevel >= 3) b.append("\n✅ Selezionare e duplicare il secondo simbolo");
+        if (acceptedLevel >= 4) b.append("\n✅ Riconoscere un'uguaglianza strutturale a distanza");
+        if (acceptedLevel >= 5) b.append("\n✅ Riconoscere l'uguaglianza tra primo e ultimo simbolo su 4 posizioni");
+        return b.toString();
+    }
+
+    private void updateEvolutionTexts(JSONObject j, String explicitProgress, boolean finalMetric) {
+        int level = j.optInt("curriculum", nativeCurriculum());
+        boolean l5Accepted = getSharedPreferences("motorai_evolution", MODE_PRIVATE)
+                .getBoolean("l5_accepted", false);
+        int acceptedLevel = level >= 5 && !l5Accepted ? 4 : Math.min(level, 5);
+
+        double learning = finalMetric && j.has("test_accuracy")
+                ? j.optDouble("test_accuracy", 0.0)
+                : j.optDouble("val_accuracy", 0.0);
+        double memory = minRetention(j, level);
+        double evo = evolutionIndex(level, learning, memory);
+        int params = j.optInt("parameters", 0);
+
+        evolutionSummary.setText(String.format(Locale.ITALY,
+                "Indice Evoluzione: %.1f/100 · Memoria min.: %.1f%% · Parametri: %,d\n(indice interno, non è un QI)",
+                evo, memory * 100.0, params));
+        capabilityNow.setText(capabilityList(acceptedLevel));
+
+        if (level < 5) {
+            learningNow.setText("🔄 Cosa sta imparando: Auto-Training pronto per scegliere il prossimo livello.");
+        } else if (!l5Accepted) {
+            learningNow.setText("🔄 Cosa sta imparando: riconoscere la stessa relazione su sequenze di 4 simboli.");
+        } else {
+            learningNow.setText("🔄 Cosa sta imparando: L5 consolidato; prossimo curriculum in preparazione.");
+        }
+
+        String p = explicitProgress;
+        if (p == null || p.isEmpty()) {
+            p = getSharedPreferences("motorai_evolution", MODE_PRIVATE)
+                    .getString("last_progress", "Seed 010 consolidata: Auto-Training V1 pronto.");
+        }
+        latestProgress.setText("🎆 Ultimo progresso: " + p);
     }
 
     private boolean rotateAndSaveCheckpoint() {
