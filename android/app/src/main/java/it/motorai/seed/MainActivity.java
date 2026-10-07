@@ -332,9 +332,6 @@ public class MainActivity extends Activity {
             answer.setText("Risposta MotorAI:\n" + savedAnswer.replace("\n", "↵\n"));
         }
 
-        Button reset = button("↺ Riparti da pesi casuali");
-        root.addView(reset);
-
         autoTrain.setOnClickListener(v -> startAutoTraining());
         miniAiGoals.setOnClickListener(v ->
                 startActivity(new Intent(this, MiniAiGoalsActivity.class)));
