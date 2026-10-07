@@ -328,6 +328,9 @@ public:
         addParam("grow3.k.w",{d,d}); addParam("grow3.k.b",{d},false,0);
         addParam("grow3.v.w",{d,d}); addParam("grow3.v.b",{d},false,0);
         addParam("grow3.o.w",{d,d},false,0); addParam("grow3.o.b",{d},false,0);
+        addParam("grow3.ffln.g",{d},false,1); addParam("grow3.ffln.b",{d},false,0);
+        addParam("grow3.ff1.w",{d,ff}); addParam("grow3.ff1.b",{ff},false,0);
+        addParam("grow3.ff2.w",{ff,d}); addParam("grow3.ff2.b",{d},false,0);
         addParam("grow3.cls.w",{d,2}); addParam("grow3.cls.b",{2},false,0);
     }
     int parameterCount() const { int n=0; for(auto&z:p)n+=z.value.size(); return n; }
@@ -361,7 +364,11 @@ public:
             Tensor a3=softmaxRows(causalMask(s3));
             Tensor y3=matmul(a3,v3);
             Tensor p3=linear(y3,"grow3.o.w","grow3.o.b");
-            xa=add(x2,p3);
+            Tensor xr3=add(x2,p3);
+            Tensor zff3=layerNorm(xr3,P("grow3.ffln.g"),P("grow3.ffln.b"));
+            Tensor hff3=gelu(linear(zff3,"grow3.ff1.w","grow3.ff1.b"));
+            Tensor dff3=linear(hff3,"grow3.ff2.w","grow3.ff2.b");
+            xa=add(xr3,dff3);
         }else{
             Tensor za=layerNorm(x2,P("grow2.ln.g"),P("grow2.ln.b"));
             Tensor gq=linear(za,"grow2.q.w","grow2.q.b");
@@ -425,6 +432,15 @@ public:
         copyParamValue("grow2.v.b","grow3.v.b");
         copyParamValue("grow2.o.w","grow3.o.w");
         copyParamValue("grow2.o.b","grow3.o.b");
+
+        Param& ff2w=PP("grow3.ff2.w");
+        Param& ff2b=PP("grow3.ff2.b");
+        std::fill(ff2w.value.n->data.begin(),ff2w.value.n->data.end(),0.0f);
+        std::fill(ff2w.m.begin(),ff2w.m.end(),0.0f);
+        std::fill(ff2w.v.begin(),ff2w.v.end(),0.0f);
+        std::fill(ff2b.value.n->data.begin(),ff2b.value.n->data.end(),0.0f);
+        std::fill(ff2b.m.begin(),ff2b.m.end(),0.0f);
+        std::fill(ff2b.v.begin(),ff2b.v.end(),0.0f);
 
         Param& tok=PP("token");
         for(int j=0;j<d;++j){
