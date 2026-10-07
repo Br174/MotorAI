@@ -38,7 +38,14 @@ public final class MotorAIBridgeClient {
     public static JSONObject buildSnapshot(Context context, JSONObject metrics, String status) {
         JSONObject out = new JSONObject();
         try {
-            out.put("appVersion", BuildConfig.VERSION_NAME);
+            String version = "Seed011";
+            try {
+                String installed = context.getPackageManager()
+                        .getPackageInfo(context.getPackageName(), 0).versionName;
+                if (installed != null && !installed.isEmpty()) version = installed;
+            } catch (Exception ignored) {
+            }
+            out.put("appVersion", version);
             copy(metrics, out, "seed", "seed");
             copy(metrics, out, "step", "step");
             copy(metrics, out, "curriculum", "curriculum");
