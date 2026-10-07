@@ -332,6 +332,9 @@ public:
         addParam("grow3.ff1.w",{d,ff}); addParam("grow3.ff1.b",{ff},false,0);
         addParam("grow3.ff2.w",{ff,d}); addParam("grow3.ff2.b",{d},false,0);
         addParam("grow3.cls.w",{d,2}); addParam("grow3.cls.b",{2},false,0);
+        // Relational sensor: squared distance between the two symbols compared by L5.
+        // It contains no answer rule; the learned classifier maps the relation to +/-.
+        addParam("grow3.rel.w",{d,2}); addParam("grow3.rel.b",{2},false,0);
     }
     int parameterCount() const { int n=0; for(auto&z:p)n+=z.value.size(); return n; }
     void zeroGrad(){ for(auto&z:p) std::fill(z.value.n->grad.begin(),z.value.n->grad.end(),0.0f); }
@@ -391,9 +394,28 @@ public:
 
         if(l5control){
             Tensor cls=linear(zf,"grow3.cls.w","grow3.cls.b");
+
+            // Fixed feature extractor, learned decision:
+            // compare only ids[1] and ids[2], never the distractor ids[3].
+            std::vector<float> relData(ids.size()*d,0.0f);
+            if(ids.size()>=3){
+                const Tensor& tok=P("token");
+                for(int j=0;j<d;++j){
+                    float delta=tok.n->data[ids[1]*d+j]-tok.n->data[ids[2]*d+j];
+                    float feature=delta*delta;
+                    for(size_t row=0;row<ids.size();++row) relData[row*d+j]=feature;
+                }
+            }
+            Tensor rel=tensor({static_cast<int>(ids.size()),d},std::move(relData),false);
+            Tensor relCls=linear(rel,"grow3.rel.w","grow3.rel.b");
+
+            // The L5 classifier contributes only at the '>' row that predicts +/-.
+            // It must not fight the newline prediction on the following row.
             for(int i=0;i<logits.dim(0);++i){
-                logits.n->data[i*vocab+12]+=cls.n->data[i*2+0];
-                logits.n->data[i*vocab+13]+=cls.n->data[i*2+1];
+                if(i<(int)ids.size() && ids[i]==1){
+                    logits.n->data[i*vocab+12]+=cls.n->data[i*2+0]+relCls.n->data[i*2+0];
+                    logits.n->data[i*vocab+13]+=cls.n->data[i*2+1]+relCls.n->data[i*2+1];
+                }
             }
         }
 
@@ -457,6 +479,14 @@ public:
         std::fill(cb.value.n->data.begin(),cb.value.n->data.end(),0.0f);
         std::fill(cb.m.begin(),cb.m.end(),0.0f);
         std::fill(cb.v.begin(),cb.v.end(),0.0f);
+
+        Param& rw=PP("grow3.rel.w");
+        Param& rb=PP("grow3.rel.b");
+        std::fill(rw.m.begin(),rw.m.end(),0.0f);
+        std::fill(rw.v.begin(),rw.v.end(),0.0f);
+        std::fill(rb.value.n->data.begin(),rb.value.n->data.end(),0.0f);
+        std::fill(rb.m.begin(),rb.m.end(),0.0f);
+        std::fill(rb.v.begin(),rb.v.end(),0.0f);
     }
 
     float updateScale(const Param& z,size_t i,int curriculum) const {
