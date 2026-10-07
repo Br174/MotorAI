@@ -10,12 +10,14 @@ static bool accepted(motorai::Engine& e,int level){
     auto r1=e.evaluateRetentionL1();
     auto r2=e.evaluateRetentionL2();
     auto r3=e.evaluateRetentionL3();
+    auto r4=e.evaluateRetentionL4();
     float required=(level>=4)?0.95f:0.90f;
     return va.answer_accuracy>=required &&
            (level<1 || r0.answer_accuracy>=0.90f) &&
            (level<2 || r1.answer_accuracy>=0.90f) &&
            (level<3 || r2.answer_accuracy>=0.90f) &&
-           (level<4 || r3.answer_accuracy>=0.90f);
+           (level<4 || r3.answer_accuracy>=0.90f) &&
+           (level<5 || r4.answer_accuracy>=0.90f);
 }
 
 static bool train_until(motorai::Engine& e,int level,int max_extra){
@@ -29,7 +31,7 @@ static bool train_until(motorai::Engine& e,int level,int max_extra){
 }
 
 static bool save_reload(motorai::Engine& e,unsigned seed,int expected,motorai::Engine& out){
-    std::string dir="/tmp/motorai_seed010_"+std::to_string(seed)+"_"+std::to_string(expected);
+    std::string dir="/tmp/motorai_seed011_"+std::to_string(seed)+"_"+std::to_string(expected);
     std::filesystem::remove_all(dir);
     if(!e.saveCheckpoint(dir) || !out.loadCheckpoint(dir)) return false;
     return out.curriculumLevel()==expected && out.globalStep()==e.globalStep();
@@ -79,6 +81,30 @@ static bool run_one(unsigned seed){
     auto r1=resumed.evaluateRetentionL1();
     auto r0=resumed.evaluateRetentionL0();
 
+    if(l4.answer_accuracy<0.90f || r3.answer_accuracy<0.90f || r2.answer_accuracy<0.90f ||
+       r1.answer_accuracy<0.90f || r0.answer_accuracy<0.90f) return false;
+
+    motorai::Engine autoRun(999);
+    if(!save_reload(resumed,seed,4,autoRun)) return false;
+    autoRun.setCurriculum(5);
+    if(!train_until(autoRun,5,5000)){
+        std::cerr<<"FAIL seed="<<seed<<" stage=L5_validation val="<<autoRun.evaluateValidation().answer_accuracy
+                 <<" r4="<<autoRun.evaluateRetentionL4().answer_accuracy
+                 <<" r3="<<autoRun.evaluateRetentionL3().answer_accuracy
+                 <<" r2="<<autoRun.evaluateRetentionL2().answer_accuracy
+                 <<" r1="<<autoRun.evaluateRetentionL1().answer_accuracy
+                 <<" r0="<<autoRun.evaluateRetentionL0().answer_accuracy
+                 <<" step="<<autoRun.globalStep()<<"\n";
+        return false;
+    }
+
+    auto l5=autoRun.evaluateTest();
+    auto ar4=autoRun.evaluateRetentionL4();
+    auto ar3=autoRun.evaluateRetentionL3();
+    auto ar2=autoRun.evaluateRetentionL2();
+    auto ar1=autoRun.evaluateRetentionL1();
+    auto ar0=autoRun.evaluateRetentionL0();
+
     std::cout<<std::fixed<<std::setprecision(4)
              <<"seed="<<seed
              <<" l0="<<l0.answer_accuracy
@@ -86,16 +112,18 @@ static bool run_one(unsigned seed){
              <<" l2="<<l2.answer_accuracy
              <<" l3="<<l3.answer_accuracy
              <<" l4="<<l4.answer_accuracy
-             <<" l3ret="<<r3.answer_accuracy
-             <<" l2ret="<<r2.answer_accuracy
-             <<" l1ret="<<r1.answer_accuracy
-             <<" l0ret="<<r0.answer_accuracy
-             <<" step="<<resumed.globalStep()
-             <<" l4_start="<<resumed.curriculumStartStep()<<"\n";
+             <<" l5="<<l5.answer_accuracy
+             <<" l4ret="<<ar4.answer_accuracy
+             <<" l3ret="<<ar3.answer_accuracy
+             <<" l2ret="<<ar2.answer_accuracy
+             <<" l1ret="<<ar1.answer_accuracy
+             <<" l0ret="<<ar0.answer_accuracy
+             <<" step="<<autoRun.globalStep()
+             <<" l5_start="<<autoRun.curriculumStartStep()<<"\n";
 
-    return l4.answer_accuracy>=0.90f && r3.answer_accuracy>=0.90f &&
-           r2.answer_accuracy>=0.90f && r1.answer_accuracy>=0.90f &&
-           r0.answer_accuracy>=0.90f;
+    return l5.answer_accuracy>=0.90f && ar4.answer_accuracy>=0.90f &&
+           ar3.answer_accuracy>=0.90f && ar2.answer_accuracy>=0.90f &&
+           ar1.answer_accuracy>=0.90f && ar0.answer_accuracy>=0.90f;
 }
 
 int main(){
