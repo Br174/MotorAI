@@ -25,6 +25,13 @@ struct TrainResult {
     bool paused = false;
 };
 
+struct Goal1TrainResult {
+    int steps_completed = 0;
+    Metrics train;
+    Metrics validation;
+    double elapsed_seconds = 0.0;
+};
+
 class Engine {
 public:
     explicit Engine(uint32_t seed = 174);
@@ -53,6 +60,16 @@ public:
     void setCurriculum(int level);
     int curriculumLevel() const;
     int curriculumStartStep() const;
+
+    // Mini-AI Goal 1: understand the broad intent of a simple Italian request.
+    // This module is trained from scratch and is isolated from the accepted L0-L5 weights.
+    Metrics evaluateGoal1Train();
+    Metrics evaluateGoal1Validation();
+    Metrics evaluateGoal1Test();
+    Goal1TrainResult trainGoal1(int steps, int batch_size = 24, float lr = 0.08f);
+    int goal1Step() const;
+    int goal1ParameterCount() const;
+    std::string classifyGoal1(const std::string& text) const;
 
 private:
     class Impl;
