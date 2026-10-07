@@ -142,9 +142,11 @@ public class MiniAiGoalsActivity extends Activity {
                 "Progresso totale Mini-AI: %.1f%% · %d/10 completati", total, completed));
         totalBar.setProgress((int)Math.round(total));
 
-        int g1 = MiniAiGoals.percent(this,0);
-        activeBar.setProgress(g1);
-        activeStatus.setText(g1 + "% · " + MiniAiGoals.status(this,0));
+        int active = MiniAiGoals.activeGoalIndex(this);
+        int activePercent = MiniAiGoals.percent(this, active);
+        activeTitle.setText((active + 1) + "/10 · " + MiniAiGoals.TITLES[active]);
+        activeBar.setProgress(activePercent);
+        activeStatus.setText(activePercent + "% · " + MiniAiGoals.status(this, active));
 
         goalsRoot.removeAllViews();
         for(int i=0;i<MiniAiGoals.TITLES.length;i++){
