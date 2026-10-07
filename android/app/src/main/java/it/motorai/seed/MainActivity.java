@@ -89,7 +89,7 @@ public class MainActivity extends Activity {
         super.onCreate(stateBundle);
         UI_ACTIVE.set(true);
         MotorAIBackgroundJobService.schedule(this);
-        setTitle("MotorAI Seed 011");
+        setTitle("MotorAI Seed 011R1");
 
         ScrollView scroll = new ScrollView(this);
         LinearLayout root = new LinearLayout(this);
@@ -97,7 +97,7 @@ public class MainActivity extends Activity {
         root.setPadding(20, 34, 20, 30);
         scroll.addView(root);
 
-        root.addView(text("MotorAI Seed 011", 28, true));
+        root.addView(text("MotorAI Seed 011R1", 28, true));
         root.addView(text("Cervello: Transformer causale nativo C++ · pesi iniziali casuali · nessun modello preaddestrato", 15, false));
         root.addView(text("Curriculum: L0–L4 consolidati → Auto-Training V1 → L5 uguaglianza adiacente", 14, false));
         root.addView(text("Auto-Training V1: genera gli esercizi, addestra, valida, controlla le memorie, salva checkpoint e fa rollback automaticamente. L5 impara una nuova posizione relazionale: nel primo gradino autonomo confronta i primi due simboli a/b e impara a ignorare un terzo simbolo distrattore da a a z, separato fra TRAIN, VALIDATION e TEST. Il canale neurale L5 è separato da L4.", 14, false));
@@ -763,7 +763,7 @@ public class MainActivity extends Activity {
             Guard g = readGuard();
 
             StringBuilder b = new StringBuilder();
-            b.append("MotorAI Seed 011\n");
+            b.append("MotorAI Seed 011R1\n");
             b.append("Snapshot: ").append(diagnosticsTimestamp()).append("\n");
             b.append("Motivo: ").append(reason).append("\n");
             b.append("Livello: L").append(level)
