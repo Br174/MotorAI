@@ -270,7 +270,7 @@ struct Param {
 
 class TinyTransformer {
 public:
-    int vocab=31, context=7, d=32, ff=64;
+    int vocab=32, context=7, d=32, ff=64;
     std::vector<Param> p;
     std::mt19937 rng;
     std::mt19937 extra_rng;
@@ -327,6 +327,7 @@ public:
         addParam("grow3.k.w",{d,d}); addParam("grow3.k.b",{d},false,0);
         addParam("grow3.v.w",{d,d}); addParam("grow3.v.b",{d},false,0);
         addParam("grow3.o.w",{d,d},false,0); addParam("grow3.o.b",{d},false,0);
+        addParam("grow3.cls.w",{d,2}); addParam("grow3.cls.b",{2},false,0);
     }
     int parameterCount() const { int n=0; for(auto&z:p)n+=z.value.size(); return n; }
     void zeroGrad(){ for(auto&z:p) std::fill(z.value.n->grad.begin(),z.value.n->grad.end(),0.0f); }
@@ -363,23 +364,36 @@ public:
         Tensor gd=linear(gh,"grow1.fc2.w","grow1.fc2.b");
         Tensor xg=add(xa,gd);
 
-        // L5 relational growth channel. grow3.o.* starts at zero, so xg3 == xg before L5 training.
-        Tensor z3=layerNorm(xg,P("grow3.ln.g"),P("grow3.ln.b"));
-        Tensor q3=linear(z3,"grow3.q.w","grow3.q.b");
-        Tensor k3=linear(z3,"grow3.k.w","grow3.k.b");
-        Tensor v3=linear(z3,"grow3.v.w","grow3.v.b");
-        Tensor s3=scale(matmul(q3,transpose2(k3)),1.0f/std::sqrt((float)d));
-        Tensor a3=softmaxRows(causalMask(s3));
-        Tensor y3=matmul(a3,v3);
-        Tensor p3=linear(y3,"grow3.o.w","grow3.o.b");
-        Tensor xg3=add(xg,p3);
+        // L5 modular channel: only the dedicated ! command activates it.
+        bool l5control=!ids.empty() && ids[0]==31;
+        Tensor xg3=xg;
+        if(l5control){
+            Tensor z3=layerNorm(xg,P("grow3.ln.g"),P("grow3.ln.b"));
+            Tensor q3=linear(z3,"grow3.q.w","grow3.q.b");
+            Tensor k3=linear(z3,"grow3.k.w","grow3.k.b");
+            Tensor v3=linear(z3,"grow3.v.w","grow3.v.b");
+            Tensor s3=scale(matmul(q3,transpose2(k3)),1.0f/std::sqrt((float)d));
+            Tensor a3=softmaxRows(causalMask(s3));
+            Tensor y3=matmul(a3,v3);
+            Tensor p3=linear(y3,"grow3.o.w","grow3.o.b");
+            xg3=add(xg,p3);
+        }
 
         Tensor zf=layerNorm(xg3,P("lnf.g"),P("lnf.b"));
         Tensor logits=matmul(zf,P("head.w"));
-        bool control=!ids.empty() && ids[0]==11;
+
+        if(l5control){
+            Tensor cls=linear(zf,"grow3.cls.w","grow3.cls.b");
+            for(int i=0;i<logits.dim(0);++i){
+                logits.n->data[i*vocab+12]+=cls.n->data[i*2+0];
+                logits.n->data[i*vocab+13]+=cls.n->data[i*2+1];
+            }
+        }
+
+        bool control=!ids.empty() && (ids[0]==11 || ids[0]==31);
         for(int i=0;i<logits.dim(0);++i){
             if(control){
-                // L4: le sole uscite legali sono newline, + e -.
+                // L4/L5: le sole uscite legali sono newline, + e -.
                 for(int j=1;j<vocab;++j)
                     if(j!=12 && j!=13) logits.n->data[i*vocab+j]=-1e9f;
             }else{
@@ -411,13 +425,9 @@ public:
             return 0.10f;
         }
 
-        // L5: almost all Seed010 remains frozen. Grow3 learns at full speed;
-        // the existing +/- classifier may move only slightly to receive the new relational feature.
+        // L5: Seed010 is frozen. Only the new modular channel and ! embedding learn.
         if(g3) return 1.0f;
-        if(z.name=="head.w"){
-            size_t col=i%static_cast<size_t>(vocab);
-            if(col==12 || col==13) return 0.05f;
-        }
+        if(z.name=="token" && i>=static_cast<size_t>(31*d)) return 1.0f;
         return 0.0f;
     }
     void adamStep(float lr,int batch,int step,int curriculum){
@@ -458,6 +468,7 @@ struct Dataset {
         if(c=='+')return 12;
         if(c=='-')return 13;
         if(c>='j'&&c<='z')return 14+(c-'j');
+        if(c=='!')return 31;
         return -1;
     }
     static char ch(int id){
@@ -468,6 +479,7 @@ struct Dataset {
         if(id==12)return '+';
         if(id==13)return '-';
         if(id>=14&&id<=30)return char('j'+id-14);
+        if(id==31)return '!';
         return '?';
     }
 
