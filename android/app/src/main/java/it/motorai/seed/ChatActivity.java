@@ -175,16 +175,32 @@ public class ChatActivity extends Activity {
                 String intent = classified.optString("intent","sconosciuto");
                 double confidence = classified.optDouble("confidence",0.0);
                 int goal2 = MiniAiGoals.percent(this,1);
+                int goal3 = MiniAiGoals.percent(this,2);
 
-                if(goal2 >= 100) {
-                    JSONObject generated = new JSONObject(MainActivity.nativeGoal2Respond(q));
-                    String learned = generated.optString("reply", "").trim();
-                    if (learned.isEmpty()) {
-                        reply = "Ho capito che è una richiesta di tipo “" + friendlyIntent(intent)
-                                + "”, ma non sono riuscita a formulare la risposta.";
+                if (goal3 >= 100) {
+                    JSONObject memory = new JSONObject(MainActivity.nativeGoal3Classify(q));
+                    String action = memory.optString("action", "none");
+                    String slot = memory.optString("slot", "none");
+                    double memoryConfidence = memory.optDouble("confidence", 0.0);
+
+                    if (memoryConfidence >= 0.55 && "store".equals(action) && !"none".equals(slot)) {
+                        String value = ConversationMemory.extractValue(slot, q);
+                        if (!value.isEmpty()) {
+                            ConversationMemory.put(this, slot, value);
+                            reply = memoryStoredReply(slot, value);
+                        } else {
+                            reply = "Ho capito che vuoi farmi ricordare qualcosa, ma non sono riuscita a isolare il valore.";
+                        }
+                    } else if (memoryConfidence >= 0.55 && "recall".equals(action) && !"none".equals(slot)) {
+                        String value = ConversationMemory.get(this, slot);
+                        reply = value.isEmpty()
+                                ? "Non me l'hai ancora detto, oppure non l'ho memorizzato."
+                                : memoryRecallReply(slot, value);
                     } else {
-                        reply = learned;
+                        reply = learnedGoal2Reply(q, intent);
                     }
+                } else if(goal2 >= 100) {
+                    reply = learnedGoal2Reply(q, intent);
                 } else {
                     reply = "Ho capito che è una richiesta di tipo “" + friendlyIntent(intent)
                             + "” (" + Math.round(confidence*100.0) + "% di sicurezza). "
@@ -199,6 +215,34 @@ public class ChatActivity extends Activity {
         },"motorai-chat").start();
     }
 
+    private String learnedGoal2Reply(String q, String intent) throws Exception {
+        JSONObject generated = new JSONObject(MainActivity.nativeGoal2Respond(q));
+        String learned = generated.optString("reply", "").trim();
+        if (!learned.isEmpty()) return learned;
+        return "Ho capito che è una richiesta di tipo “" + friendlyIntent(intent)
+                + "”, ma non sono riuscita a formulare la risposta.";
+    }
+
+    private String memoryStoredReply(String slot, String value) {
+        switch (slot) {
+            case "name": return "Va bene, ricorderò che ti chiami " + value + ".";
+            case "city": return "Va bene, ricorderò che vivi a " + value + ".";
+            case "color": return "Va bene, ricorderò che il tuo colore preferito è " + value + ".";
+            case "pet": return "Va bene, ricorderò il tuo animale: " + value + ".";
+            default: return "Va bene, lo ricorderò: " + value + ".";
+        }
+    }
+
+    private String memoryRecallReply(String slot, String value) {
+        switch (slot) {
+            case "name": return "Mi hai detto che ti chiami " + value + ".";
+            case "city": return "Mi hai detto che vivi a " + value + ".";
+            case "color": return "Mi hai detto che il tuo colore preferito è " + value + ".";
+            case "pet": return "Mi hai detto che il tuo animale è " + value + ".";
+            default: return "Ricordo: " + value + ".";
+        }
+    }
+
     private String friendlyIntent(String raw) {
         switch(raw) {
             case "saluto": return "saluto";
@@ -211,10 +255,12 @@ public class ChatActivity extends Activity {
     }
 
     private void addUser(String message) {
+        ConversationMemory.appendTurn(this, "user", message);
         addBubble(message,true);
     }
 
     private void addAssistant(String message) {
+        ConversationMemory.appendTurn(this, "assistant", message);
         addBubble(message,false);
     }
 
