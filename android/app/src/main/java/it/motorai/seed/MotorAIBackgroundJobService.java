@@ -160,7 +160,9 @@ public class MotorAIBackgroundJobService extends JobService {
                     return false;
                 }
 
-                runLevel5Chunk(runtime, evo);
+                if (!runLevel5Chunk(runtime, evo)) {
+                    return false;
+                }
 
                 if (evo.getBoolean("l5_accepted", false)) {
                     return false;
@@ -184,7 +186,7 @@ public class MotorAIBackgroundJobService extends JobService {
         return false;
     }
 
-    private void runLevel5Chunk(SharedPreferences runtime, SharedPreferences evo) throws Exception {
+    private boolean runLevel5Chunk(SharedPreferences runtime, SharedPreferences evo) throws Exception {
         JSONObject before = new JSONObject(MainActivity.nativeTrainingEvaluate());
         double beforeLoss = before.optDouble("val_loss", Double.POSITIVE_INFINITY);
         double beforeAcc = before.optDouble("val_accuracy", 0.0);
@@ -192,7 +194,7 @@ public class MotorAIBackgroundJobService extends JobService {
 
         if (!rotateAndSave()) {
             appendFailure("Background Auto-Training: checkpoint pre-chunk non disponibile");
-            return;
+            return false;
         }
 
         JSONObject after = new JSONObject(MainActivity.nativeTrainChunk(20));
@@ -215,14 +217,14 @@ public class MotorAIBackgroundJobService extends JobService {
             runtime.edit().putInt("l5_stable_passes", 0).apply();
             appendFailure("Background Auto-Training: regressione/dimenticanza · rollback automatico");
             sendTelemetry(after, "background_rollback_regression");
-            return;
+            return false;
         }
 
         if (!rotateAndSave()) {
             appendFailure("Background Auto-Training: salvataggio post-chunk fallito");
             MainActivity.nativeLoadCheckpoint(checkpoint("previous").getAbsolutePath());
             rotateAndSave();
-            return;
+            return false;
         }
 
         boolean accepted = acc >= 0.95;
@@ -252,21 +254,22 @@ public class MotorAIBackgroundJobService extends JobService {
                         .apply();
                 runtime.edit().putInt("l5_stable_passes", 0).apply();
                 sendTelemetry(fin, "background_L5_consolidated");
-                return;
+                return false;
             }
 
             rollbackToBaseline("TEST finale L5 non superato");
             sendCurrentTelemetry("background_rollback_final_test");
-            return;
+            return false;
         }
 
         if (step - start >= 5000) {
             rollbackToBaseline("limite di sicurezza L5 raggiunto");
             sendCurrentTelemetry("background_rollback_safety_limit");
-            return;
+            return false;
         }
 
         sendTelemetry(after, "background_training_L5");
+        return true;
     }
 
     private void rollbackToBaseline(String reason) {
