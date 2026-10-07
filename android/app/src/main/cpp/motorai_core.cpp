@@ -1647,8 +1647,24 @@ public:
 
     int parameterCount() const { return static_cast<int>(w.size()+b.size()); }
 
+    static std::vector<float> reasoningFeatures(const std::string& text){
+        std::istringstream in(normalizeItalian(text));
+        std::ostringstream out;
+        std::string token;
+        bool first=true;
+        while(in>>token){
+            bool digits=!token.empty();
+            for(char ch:token) if(ch<'0'||ch>'9'){digits=false;break;}
+            if(digits || numberWord(token)>=0) token="numero";
+            if(!first) out<<" ";
+            first=false;
+            out<<token;
+        }
+        return Goal1IntentBrain::features(out.str());
+    }
+
     std::vector<float> logits(const std::string& text) const {
-        auto x=Goal1IntentBrain::features(text);
+        auto x=reasoningFeatures(text);
         std::vector<float> z(CLASSES,0.0f);
         for(int k=0;k<CLASSES;++k){
             float s=b[k];
@@ -1692,7 +1708,7 @@ public:
             std::vector<float> gw(w.size(),0.0f),gb(b.size(),0.0f);
             for(int n=0;n<batch;++n){
                 const auto& e=data.train[deterministicIndex(r,data.train.size())];
-                auto x=Goal1IntentBrain::features(e.text);
+                auto x=reasoningFeatures(e.text);
                 std::vector<float> z(CLASSES);
                 float mx=-std::numeric_limits<float>::infinity();
                 for(int k=0;k<CLASSES;++k){
