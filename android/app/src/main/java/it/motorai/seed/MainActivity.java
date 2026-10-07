@@ -87,6 +87,7 @@ public class MainActivity extends Activity {
 
     @Override protected void onCreate(Bundle stateBundle) {
         super.onCreate(stateBundle);
+        UI_ACTIVE.set(true);
         MotorAIBackgroundJobService.schedule(this);
         setTitle("MotorAI Seed 011");
 
@@ -423,6 +424,9 @@ public class MainActivity extends Activity {
                 ui(() -> state.setText("Stato: errore training — " + e.getMessage()));
             } finally {
                 ui(() -> learn.setEnabled(true));
+                if (!UI_ACTIVE.get()) {
+                    MotorAIBackgroundJobService.scheduleKick(getApplicationContext());
+                }
             }
         });
     }
@@ -687,6 +691,9 @@ public class MainActivity extends Activity {
                     autoTrain.setEnabled(true);
                     learn.setEnabled(true);
                 });
+                if (!UI_ACTIVE.get()) {
+                    MotorAIBackgroundJobService.scheduleKick(getApplicationContext());
+                }
             }
         });
     }
@@ -1097,7 +1104,13 @@ public class MainActivity extends Activity {
     @Override protected void onStop() {
         UI_ACTIVE.set(false);
         super.onStop();
-        if (training.get()) stopTraining("App in background");
-        else runAsync(this::rotateAndSaveCheckpoint);
+        if (training.get()) {
+            stopTraining("App in background");
+        } else {
+            runAsync(() -> {
+                rotateAndSaveCheckpoint();
+                MotorAIBackgroundJobService.scheduleKick(getApplicationContext());
+            });
+        }
     }
 }
