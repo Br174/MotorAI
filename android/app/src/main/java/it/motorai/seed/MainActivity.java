@@ -56,6 +56,7 @@ public class MainActivity extends Activity {
     private TextView capabilityNow;
     private TextView learningNow;
     private TextView latestProgress;
+    private static final long DIAGNOSTIC_INTERVAL_MS = 20L * 60L * 1000L;
     private final AtomicBoolean training = new AtomicBoolean(false);
 
     private File checkpointRoot() { return new File(getFilesDir(), "motorai/checkpoints"); }
@@ -119,6 +120,9 @@ public class MainActivity extends Activity {
         root.addView(learningNow);
         root.addView(latestProgress);
 
+        Button diagnostics = button("🩺 Diagnostica");
+        root.addView(diagnostics);
+
         autoTrain = button("🤖 Auto-Training");
         root.addView(autoTrain);
 
@@ -162,6 +166,7 @@ public class MainActivity extends Activity {
         root.addView(reset);
 
         autoTrain.setOnClickListener(v -> startAutoTraining());
+        diagnostics.setOnClickListener(v -> openDiagnostics());
         learn.setOnClickListener(v -> startTraining());
         pause.setOnClickListener(v -> stopTraining("Pausa richiesta"));
         save.setOnClickListener(v -> runAsync(() -> {
@@ -294,6 +299,7 @@ public class MainActivity extends Activity {
                     Guard g = readGuard();
                     ui(() -> device.setText(g.description));
                     if (!g.allowed) {
+                        appendDiagnosticFailure("Guardia dispositivo: " + g.reason);
                         training.set(false);
                         ui(() -> state.setText("Stato: training fermato automaticamente — " + g.reason));
                         break;
@@ -309,12 +315,14 @@ public class MainActivity extends Activity {
                     double beforeRetentionL4 = before.optDouble("retention_l4_accuracy", 1.0);
 
                     if (!rotateAndSaveCheckpoint()) {
+                        appendDiagnosticFailure("Checkpoint di sicurezza non creato durante training manuale");
                         training.set(false);
                         ui(() -> state.setText("Stato: impossibile creare checkpoint di sicurezza"));
                         break;
                     }
 
                     JSONObject j = new JSONObject(nativeTrainChunk(20));
+                    maybeDiagnosticSnapshot(j, "Training manuale");
                     double afterValLoss = j.optDouble("val_loss", Double.POSITIVE_INFINITY);
                     double afterValAcc = j.optDouble("val_accuracy", 0.0);
                     double afterRetentionL0 = j.optDouble("retention_l0_accuracy", 1.0);
@@ -345,6 +353,7 @@ public class MainActivity extends Activity {
                             && afterRetentionL4 + 0.05 < beforeRetentionL4;
 
                     if (numericFailure || clearRegression || forgetL0 || forgetL1 || forgetL2 || forgetL3 || forgetL4) {
+                        appendDiagnosticFailure("Regressione/dimenticanza nel training manuale · rollback automatico");
                         nativeLoadCheckpoint(currentCheckpoint().getAbsolutePath());
                         training.set(false);
                         ui(() -> {
@@ -404,6 +413,7 @@ public class MainActivity extends Activity {
                     }
                 }
             } catch (Exception e) {
+                appendDiagnosticFailure("Errore training manuale: " + safeMessage(e));
                 training.set(false);
                 ui(() -> state.setText("Stato: errore training — " + e.getMessage()));
             } finally {
@@ -517,6 +527,7 @@ public class MainActivity extends Activity {
                     Guard g = readGuard();
                     ui(() -> device.setText(g.description));
                     if (!g.allowed) {
+                        appendDiagnosticFailure("Auto-Training in pausa sicura: " + g.reason);
                         rotateAndSaveCheckpoint();
                         training.set(false);
                         ui(() -> state.setText("Stato: Auto-Training in pausa sicura — " + g.reason));
@@ -535,12 +546,14 @@ public class MainActivity extends Activity {
                     };
 
                     if (!rotateAndSaveCheckpoint()) {
+                        appendDiagnosticFailure("Auto-Training: checkpoint non disponibile");
                         training.set(false);
                         ui(() -> state.setText("Stato: Auto-Training fermato · checkpoint non disponibile"));
                         break;
                     }
 
                     JSONObject j = new JSONObject(nativeTrainChunk(20));
+                    maybeDiagnosticSnapshot(j, "Auto-Training L5");
                     double loss = j.optDouble("val_loss", Double.POSITIVE_INFINITY);
                     double acc = j.optDouble("val_accuracy", 0.0);
                     double[] r = new double[] {
@@ -564,6 +577,7 @@ public class MainActivity extends Activity {
                     }
 
                     if (regression || forgetting) {
+                        appendDiagnosticFailure("Auto-Training: regressione o dimenticanza rilevata · rollback");
                         nativeLoadCheckpoint(currentCheckpoint().getAbsolutePath());
                         JSONObject rolled = new JSONObject(nativeTrainingEvaluate());
                         recordEvolution(rolled, "Rollback",
@@ -624,6 +638,7 @@ public class MainActivity extends Activity {
                                 nativeLoadCheckpoint(autoBaselineCheckpoint().getAbsolutePath());
                                 rotateAndSaveCheckpoint();
                             }
+                            appendDiagnosticFailure("Auto-Training: TEST finale non superato · rollback alla Seed 010");
                             getSharedPreferences("motorai_evolution", MODE_PRIVATE)
                                     .edit().putBoolean("l5_accepted", false).apply();
                             JSONObject rolled = new JSONObject(nativeTrainingEvaluate());
@@ -643,6 +658,7 @@ public class MainActivity extends Activity {
                             nativeLoadCheckpoint(autoBaselineCheckpoint().getAbsolutePath());
                             rotateAndSaveCheckpoint();
                         }
+                        appendDiagnosticFailure("Auto-Training: limite di sicurezza raggiunto · rollback alla Seed 010");
                         getSharedPreferences("motorai_evolution", MODE_PRIVATE)
                                 .edit().putBoolean("l5_accepted", false).apply();
                         JSONObject rolled = new JSONObject(nativeTrainingEvaluate());
@@ -657,6 +673,7 @@ public class MainActivity extends Activity {
                     }
                 }
             } catch (Exception e) {
+                appendDiagnosticFailure("Errore Auto-Training: " + safeMessage(e));
                 training.set(false);
                 final String err = e.getMessage() == null ? e.getClass().getSimpleName() : e.getMessage();
                 ui(() -> state.setText("Stato: errore Auto-Training — " + err));
@@ -673,6 +690,128 @@ public class MainActivity extends Activity {
         training.set(false);
         nativeRequestPause();
         state.setText("Stato: " + why + " · salvo al primo punto sicuro");
+    }
+
+    private String safeMessage(Throwable e) {
+        if (e == null) return "errore sconosciuto";
+        String m = e.getMessage();
+        return (m == null || m.trim().isEmpty()) ? e.getClass().getSimpleName() : m;
+    }
+
+    private String diagnosticsTimestamp() {
+        return new java.text.SimpleDateFormat("dd/MM/yyyy HH:mm:ss", Locale.ITALY)
+                .format(new java.util.Date());
+    }
+
+    private synchronized void appendDiagnosticFailure(String message) {
+        try {
+            SharedPreferences p = getSharedPreferences("motorai_diagnostics", MODE_PRIVATE);
+            String old = p.getString("failures", "");
+            String entry = "• " + diagnosticsTimestamp() + " — " + message.replace("\n", " ");
+            String combined = old.isEmpty() ? entry : old + "\n" + entry;
+            String[] lines = combined.split("\\n");
+            int from = Math.max(0, lines.length - 12);
+            StringBuilder kept = new StringBuilder();
+            for (int i = from; i < lines.length; i++) {
+                if (kept.length() > 0) kept.append("\n");
+                kept.append(lines[i]);
+            }
+            p.edit().putString("failures", kept.toString()).apply();
+        } catch (Exception ignored) {
+        }
+    }
+
+    private synchronized void maybeDiagnosticSnapshot(JSONObject j, String reason) {
+        SharedPreferences p = getSharedPreferences("motorai_diagnostics", MODE_PRIVATE);
+        long now = System.currentTimeMillis();
+        long last = p.getLong("last_snapshot_ms", 0L);
+        if (last == 0L || now - last >= DIAGNOSTIC_INTERVAL_MS) {
+            saveDiagnosticSnapshot(j, reason, now);
+        }
+    }
+
+    private synchronized void forceDiagnosticSnapshot(JSONObject j, String reason) {
+        saveDiagnosticSnapshot(j, reason, System.currentTimeMillis());
+    }
+
+    private void saveDiagnosticSnapshot(JSONObject j, String reason, long now) {
+        try {
+            int level = j.optInt("curriculum", nativeCurriculum());
+            int step = j.optInt("step", 0);
+            int params = j.optInt("parameters", 0);
+            int start = j.optInt("curriculum_start_step", step);
+            double val = j.has("val_accuracy") ? j.optDouble("val_accuracy", Double.NaN) : Double.NaN;
+            double valLoss = j.has("val_loss") ? j.optDouble("val_loss", Double.NaN) : Double.NaN;
+            double test = j.has("test_accuracy") ? j.optDouble("test_accuracy", Double.NaN) : Double.NaN;
+            double r0 = j.optDouble("retention_l0_accuracy", Double.NaN);
+            double r1 = j.optDouble("retention_l1_accuracy", Double.NaN);
+            double r2 = j.optDouble("retention_l2_accuracy", Double.NaN);
+            double r3 = j.optDouble("retention_l3_accuracy", Double.NaN);
+            double r4 = j.optDouble("retention_l4_accuracy", Double.NaN);
+            Guard g = readGuard();
+
+            StringBuilder b = new StringBuilder();
+            b.append("MotorAI Seed 011\n");
+            b.append("Snapshot: ").append(diagnosticsTimestamp()).append("\n");
+            b.append("Motivo: ").append(reason).append("\n");
+            b.append("Livello: L").append(level)
+                    .append(" · Passi totali: ").append(step)
+                    .append(" · Passi livello: ").append(Math.max(0, step - start)).append("\n");
+            b.append("Parametri: ").append(String.format(Locale.ITALY, "%,d", params)).append("\n");
+
+            if (Double.isFinite(val)) {
+                b.append(String.format(Locale.ITALY, "Validation: %.1f%% · loss %.4f\n", val * 100.0, valLoss));
+            }
+            if (Double.isFinite(test)) {
+                b.append(String.format(Locale.ITALY, "TEST disponibile: %.1f%%\n", test * 100.0));
+            } else {
+                b.append("TEST finale: nascosto/non consultato durante il training\n");
+            }
+
+            b.append("Memoria: ");
+            if (Double.isFinite(r4)) b.append(String.format(Locale.ITALY, "L4 %.1f%% · ", r4 * 100.0));
+            if (Double.isFinite(r3)) b.append(String.format(Locale.ITALY, "L3 %.1f%% · ", r3 * 100.0));
+            if (Double.isFinite(r2)) b.append(String.format(Locale.ITALY, "L2 %.1f%% · ", r2 * 100.0));
+            if (Double.isFinite(r1)) b.append(String.format(Locale.ITALY, "L1 %.1f%% · ", r1 * 100.0));
+            if (Double.isFinite(r0)) b.append(String.format(Locale.ITALY, "L0 %.1f%%", r0 * 100.0));
+            b.append("\n");
+
+            b.append(g.description).append("\n");
+            b.append("Checkpoint: current=").append(currentCheckpoint().exists() ? "OK" : "NO")
+                    .append(" · previous=").append(previousCheckpoint().exists() ? "OK" : "NO")
+                    .append(" · auto-baseline=").append(autoBaselineCheckpoint().exists() ? "OK" : "NO")
+                    .append("\n");
+
+            SharedPreferences evo = getSharedPreferences("motorai_evolution", MODE_PRIVATE);
+            b.append("L5 consolidato: ").append(evo.getBoolean("l5_accepted", false) ? "SÌ" : "NO").append("\n");
+            b.append("Ultimo progresso: ")
+                    .append(evo.getString("last_progress", "nessuno")).append("\n");
+            b.append("\nSuggerimento screenshot: includere anche la sezione “Problemi rilevati” qui sotto.");
+
+            getSharedPreferences("motorai_diagnostics", MODE_PRIVATE).edit()
+                    .putLong("last_snapshot_ms", now)
+                    .putString("last_report", b.toString())
+                    .apply();
+        } catch (Exception e) {
+            appendDiagnosticFailure("Creazione snapshot diagnostico fallita: " + safeMessage(e));
+        }
+    }
+
+    private void openDiagnostics() {
+        runAsync(() -> {
+            try {
+                int level = nativeCurriculum();
+                boolean accepted = getSharedPreferences("motorai_evolution", MODE_PRIVATE)
+                        .getBoolean("l5_accepted", false);
+                JSONObject j = (level >= 5 && !accepted)
+                        ? new JSONObject(nativeTrainingEvaluate())
+                        : new JSONObject(nativeEvaluate());
+                forceDiagnosticSnapshot(j, "Apertura pagina diagnostica");
+            } catch (Exception e) {
+                appendDiagnosticFailure("Aggiornamento diagnosi manuale fallito: " + safeMessage(e));
+            }
+            ui(() -> startActivity(new Intent(this, DiagnosticsActivity.class)));
+        });
     }
 
     private void refreshMetrics() {
@@ -692,6 +831,7 @@ public class MainActivity extends Activity {
                     line = formatMetrics(j);
                 }
                 seedEvolutionHistoryIfNeeded();
+                maybeDiagnosticSnapshot(j, "Controllo metriche");
                 final List<EvolutionView.Point> pts = loadEvolutionPoints();
                 Guard g = readGuard();
                 final JSONObject snapshot = j;
