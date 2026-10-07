@@ -15,7 +15,6 @@ import android.view.View;
 import android.widget.Button;
 import android.widget.EditText;
 import android.widget.LinearLayout;
-import android.widget.ProgressBar;
 import android.widget.ScrollView;
 import android.widget.TextView;
 
@@ -60,8 +59,7 @@ public class MainActivity extends Activity {
     private TextView learningNow;
     private TextView latestProgress;
     private TextView nextGoal;
-    private final TextView[] goalTexts = new TextView[10];
-    private final ProgressBar[] goalBars = new ProgressBar[10];
+    private TextView miniAiSummary;
     private TextView liveIndicator;
     private TextView evolutionRangeLabel;
     private static final long DIAGNOSTIC_INTERVAL_MS = 20L * 60L * 1000L;
@@ -192,18 +190,10 @@ public class MainActivity extends Activity {
         root.addView(latestProgress);
         root.addView(nextGoal);
 
-        root.addView(text("🎯 I 10 obiettivi di MotorAI", 18, true));
-        root.addView(text("Ogni obiettivo ha una percentuale reale: 100% significa superato, 0% significa non ancora iniziato.", 13, false));
-        addGoalRow(root, 0, "1. Copiare correttamente una breve sequenza");
-        addGoalRow(root, 1, "2. Mettere due simboli nell'ordine inverso");
-        addGoalRow(root, 2, "3. Scegliere e ripetere il primo simbolo");
-        addGoalRow(root, 3, "4. Scegliere e ripetere il secondo simbolo");
-        addGoalRow(root, 4, "5. Capire se due parti corrispondono anche quando sono lontane");
-        addGoalRow(root, 5, "6. Confrontare due simboli ignorando ciò che non serve");
-        addGoalRow(root, 6, "7. Usare due regole imparate una dopo l'altra");
-        addGoalRow(root, 7, "8. Scegliere da sola quale regola usare");
-        addGoalRow(root, 8, "9. Tenere a mente più informazioni prima di rispondere");
-        addGoalRow(root, 9, "10. Completare un compito in più fasi: capire, ragionare, cercare quando serve, rispondere");
+        miniAiSummary = text("🎯 Percorso Mini-AI: —", 15, true);
+        root.addView(miniAiSummary);
+        Button miniAiGoals = button("🎯 Apri i 10 obiettivi");
+        root.addView(miniAiGoals);
 
         Button diagnostics = button("🩺 Diagnostica");
         root.addView(diagnostics);
@@ -251,6 +241,8 @@ public class MainActivity extends Activity {
         root.addView(reset);
 
         autoTrain.setOnClickListener(v -> startAutoTraining());
+        miniAiGoals.setOnClickListener(v ->
+                startActivity(new Intent(this, MiniAiGoalsActivity.class)));
         diagnostics.setOnClickListener(v -> openDiagnostics());
         learn.setOnClickListener(v -> startTraining());
         pause.setOnClickListener(v -> stopTraining("Pausa richiesta"));
@@ -1070,65 +1062,6 @@ public class MainActivity extends Activity {
         heartbeatHandler.removeCallbacks(heartbeat);
     }
 
-    private void addGoalRow(LinearLayout root, int index, String title) {
-        TextView label = text(title + " · 0%", 13, false);
-        ProgressBar bar = new ProgressBar(this, null, android.R.attr.progressBarStyleHorizontal);
-        bar.setMax(100);
-        bar.setProgress(0);
-        bar.setPadding(22, 0, 22, 8);
-        goalTexts[index] = label;
-        goalBars[index] = bar;
-        root.addView(label);
-        root.addView(bar, new LinearLayout.LayoutParams(
-                LinearLayout.LayoutParams.MATCH_PARENT, dp(18)));
-    }
-
-    private String goalName(int index) {
-        switch (index) {
-            case 0: return "Copiare una breve sequenza";
-            case 1: return "Invertire due simboli";
-            case 2: return "Ripetere il primo simbolo";
-            case 3: return "Ripetere il secondo simbolo";
-            case 4: return "Riconoscere una corrispondenza a distanza";
-            case 5: return "Confrontare ignorando ciò che non serve";
-            case 6: return "Usare due regole una dopo l'altra";
-            case 7: return "Scegliere da sola la regola giusta";
-            case 8: return "Tenere più informazioni a mente";
-            default: return "Completare un compito in più fasi";
-        }
-    }
-
-    private void updateGoalBoard(JSONObject j, int acceptedLevel, boolean l5Accepted) {
-        int activeLevel = j.optInt("curriculum", nativeCurriculum());
-        double learning = j.has("test_accuracy")
-                ? j.optDouble("test_accuracy", 0.0)
-                : j.optDouble("val_accuracy", 0.0);
-        double memory = minRetention(j, Math.max(0, activeLevel));
-        int activePercent = (int)Math.round(Math.max(0.0,
-                Math.min(0.99, Math.min(learning, memory))) * 100.0);
-
-        for (int i = 0; i < 10; i++) {
-            int percent;
-            String phase;
-            if (i <= acceptedLevel) {
-                percent = 100;
-                phase = "completato";
-            } else if (i == activeLevel && activeLevel <= 5 && !(activeLevel == 5 && l5Accepted)) {
-                percent = activePercent;
-                phase = "in corso";
-            } else {
-                percent = 0;
-                phase = "non iniziato";
-            }
-
-            if (goalBars[i] != null) goalBars[i].setProgress(percent);
-            if (goalTexts[i] != null) {
-                goalTexts[i].setText((i + 1) + ". " + goalName(i)
-                        + " · " + percent + "% · " + phase);
-            }
-        }
-    }
-
     private String capabilityList(int acceptedLevel) {
         StringBuilder b = new StringBuilder();
         if (acceptedLevel >= 0) b.append("✅ Copiare una sequenza breve");
@@ -1145,8 +1078,6 @@ public class MainActivity extends Activity {
         boolean l5Accepted = getSharedPreferences("motorai_evolution", MODE_PRIVATE)
                 .getBoolean("l5_accepted", false);
         int acceptedLevel = level >= 5 && !l5Accepted ? 4 : Math.min(level, 5);
-        updateGoalBoard(j, acceptedLevel, l5Accepted);
-
         double learning = finalMetric && j.has("test_accuracy")
                 ? j.optDouble("test_accuracy", 0.0)
                 : j.optDouble("val_accuracy", 0.0);
@@ -1196,6 +1127,12 @@ public class MainActivity extends Activity {
             nextGoal.setText("🎯 Prossimo passo: completare questo esercizio e superare il controllo finale.");
         } else {
             nextGoal.setText("🎯 Prossimo passo: completare il livello attuale e passare al successivo.");
+        }
+
+        MiniAiGoals.seedIfNeeded(this);
+        if (miniAiSummary != null) {
+            miniAiSummary.setText("🎯 " + MiniAiGoals.summary(this)
+                    + "\nFondamenta neurali L0-L5: completate ✅");
         }
     }
 
