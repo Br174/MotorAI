@@ -409,12 +409,13 @@ public:
             Tensor rel=tensor({static_cast<int>(ids.size()),d},std::move(relData),false);
             Tensor relCls=linear(rel,"grow3.rel.w","grow3.rel.b");
 
-            // The L5 classifier contributes only at the '>' row that predicts +/-.
-            // It must not fight the newline prediction on the following row.
+            // At the L5 answer row, classification is isolated from the legacy head:
+            // only the learned relational head may decide +/-. This prevents distractor shortcuts.
             for(int i=0;i<logits.dim(0);++i){
                 if(i<(int)ids.size() && ids[i]==1){
-                    logits.n->data[i*vocab+12]+=cls.n->data[i*2+0]+relCls.n->data[i*2+0];
-                    logits.n->data[i*vocab+13]+=cls.n->data[i*2+1]+relCls.n->data[i*2+1];
+                    logits.n->data[i*vocab+0]=-1e9f;
+                    logits.n->data[i*vocab+12]=relCls.n->data[i*2+0];
+                    logits.n->data[i*vocab+13]=relCls.n->data[i*2+1];
                 }
             }
         }
