@@ -1965,6 +1965,170 @@ public:
     }
 };
 
+
+struct Goal6Example {
+    std::string text;
+    int label = 0; // 0 wikipedia/static, 1 live
+};
+
+struct Goal6Dataset {
+    std::vector<Goal6Example> train, val, test;
+    static void add(std::vector<Goal6Example>& dst,int label,std::initializer_list<const char*> values){
+        for(const char* s:values) dst.push_back({s,label});
+    }
+    explicit Goal6Dataset(uint32_t seed){
+        add(train,0,{
+            "chi e dante alighieri","chi era galileo galilei","quando e nato mozart",
+            "qual e la capitale del portogallo","spiegami il pianeta marte",
+            "cerca informazioni su leonardo da vinci","chi ha scritto i promessi sposi",
+            "cos e la fotosintesi","dove si trova il monte everest","quando e nata roma",
+            "parlami di raffaello","cerca informazioni sulla rivoluzione francese",
+            "qual e la capitale della grecia","chi e marie curie","cos e un vulcano",
+            "spiegami il sistema solare"
+        });
+        add(val,0,{
+            "chi e michelangelo","quando e nato verdi","qual e la capitale della spagna",
+            "spiegami la luna","cerca informazioni su napoleone","cos e il dna"
+        });
+        add(test,0,{
+            "chi era giotto","quando e nato einstein","qual e la capitale dell austria",
+            "parlami di saturno","cerca informazioni su garibaldi","cos e un terremoto"
+        });
+
+        add(train,1,{
+            "che tempo fa oggi","che temperatura c e adesso","quanto costa oggi il bitcoin",
+            "qual e il prezzo corrente dell oro","quali sono le notizie di oggi",
+            "chi ha vinto la partita ieri","quando parte il prossimo treno",
+            "qual e il presidente attuale","quanto vale oggi l euro",
+            "che tempo fara domani","qual e il traffico adesso","quali film sono al cinema oggi",
+            "chi sta giocando adesso","prezzo attuale del petrolio","notizie di questa mattina",
+            "orari dei treni di oggi"
+        });
+        add(val,1,{
+            "meteo di domani","prezzo del bitcoin adesso","notizie di oggi sulla tecnologia",
+            "chi ha vinto ieri","quanto vale l oro oggi","prossimo treno per roma"
+        });
+        add(test,1,{
+            "temperatura adesso a milano","prezzo corrente dell euro","notizie di oggi sul calcio",
+            "chi gioca questa sera","traffico attuale a roma","quando parte il prossimo autobus"
+        });
+
+        std::mt19937 r(seed ^ 0x6A11C0DEu);
+        deterministicShuffle(train,r);
+        deterministicShuffle(val,r);
+        deterministicShuffle(test,r);
+    }
+};
+
+class Goal6SearchBrain {
+public:
+    static constexpr int FEATURES=512;
+    static constexpr int CLASSES=2;
+    uint32_t seed=174;
+    int step=0;
+    std::vector<float> w;
+    std::vector<float> b;
+
+    explicit Goal6SearchBrain(uint32_t s=174):seed(s),w(FEATURES*CLASSES),b(CLASSES,0.0f){
+        std::mt19937 r(seed ^ 0x6A11BEEFu);
+        for(float& x:w) x=0.003f*deterministicNormalApprox(r);
+    }
+
+    int parameterCount() const { return static_cast<int>(w.size()+b.size()); }
+
+    std::vector<float> logits(const std::string& text) const {
+        auto x=Goal1IntentBrain::features(text);
+        std::vector<float> z(CLASSES,0.0f);
+        for(int k=0;k<CLASSES;++k){
+            float s=b[k];
+            for(int i=0;i<FEATURES;++i) s+=x[i]*w[i*CLASSES+k];
+            z[k]=s;
+        }
+        return z;
+    }
+
+    int predict(const std::string& text,float* confidence=nullptr) const {
+        auto z=logits(text);
+        float mx=*std::max_element(z.begin(),z.end());
+        float sum=0.0f;
+        std::vector<float> p(CLASSES);
+        for(int k=0;k<CLASSES;++k){p[k]=std::exp(z[k]-mx);sum+=p[k];}
+        int best=0; float bp=-1.0f;
+        for(int k=0;k<CLASSES;++k){p[k]/=sum;if(p[k]>bp){bp=p[k];best=k;}}
+        if(confidence) *confidence=bp;
+        return best;
+    }
+
+    Metrics evaluate(const std::vector<Goal6Example>& set) const {
+        if(set.empty()) return {};
+        double loss=0.0; int correct=0;
+        for(const auto& e:set){
+            auto z=logits(e.text);
+            float mx=*std::max_element(z.begin(),z.end());
+            float sum=0.0f; for(float v:z) sum+=std::exp(v-mx);
+            loss-=z[e.label]-mx-std::log(sum);
+            int best=static_cast<int>(std::max_element(z.begin(),z.end())-z.begin());
+            if(best==e.label) ++correct;
+        }
+        return {static_cast<float>(loss/set.size()),static_cast<float>(correct)/set.size()};
+    }
+
+    Goal6TrainResult train(const Goal6Dataset& data,int steps,int batch,float lr){
+        auto t0=std::chrono::steady_clock::now();
+        int done=0;
+        for(int s=0;s<steps;++s){
+            std::mt19937 r(seed ^ 0x6A11CAFEu ^ static_cast<uint32_t>(step+1));
+            std::vector<float> gw(w.size(),0.0f),gb(b.size(),0.0f);
+            for(int n=0;n<batch;++n){
+                const auto& e=data.train[deterministicIndex(r,data.train.size())];
+                auto x=Goal1IntentBrain::features(e.text);
+                std::vector<float> z(CLASSES);
+                float mx=-std::numeric_limits<float>::infinity();
+                for(int k=0;k<CLASSES;++k){
+                    float q=b[k];
+                    for(int i=0;i<FEATURES;++i) q+=x[i]*w[i*CLASSES+k];
+                    z[k]=q; mx=std::max(mx,q);
+                }
+                float sum=0.0f;
+                for(int k=0;k<CLASSES;++k){z[k]=std::exp(z[k]-mx);sum+=z[k];}
+                for(int k=0;k<CLASSES;++k){
+                    float gg=z[k]/sum-(k==e.label?1.0f:0.0f);
+                    gb[k]+=gg;
+                    for(int i=0;i<FEATURES;++i) if(x[i]!=0.0f) gw[i*CLASSES+k]+=gg*x[i];
+                }
+            }
+            float rate=lr/std::max(1,batch);
+            for(size_t i=0;i<w.size();++i) w[i]-=rate*(gw[i]+0.0002f*w[i]);
+            for(size_t i=0;i<b.size();++i) b[i]-=rate*gb[i];
+            ++step; ++done;
+        }
+        auto t1=std::chrono::steady_clock::now();
+        Goal6TrainResult out;
+        out.steps_completed=done;
+        out.train=evaluate(data.train);
+        out.validation=evaluate(data.val);
+        out.elapsed_seconds=std::chrono::duration<double>(t1-t0).count();
+        return out;
+    }
+
+    static std::string queryFrom(const std::string& raw){
+        std::string s=normalizeItalian(raw);
+        static const std::vector<std::string> prefixes={
+            "cerca informazioni su ","parlami di ","spiegami ","chi e ","chi era ",
+            "cos e ","quando e nato ","quando e nata ","qual e la capitale del ",
+            "qual e la capitale della ","qual e la capitale di ","dove si trova "
+        };
+        for(const auto& p:prefixes){
+            if(s.rfind(p,0)==0){s=s.substr(p.size());break;}
+        }
+        while(!s.empty()&&s.front()==' ') s.erase(s.begin());
+        while(!s.empty()&&s.back()==' ') s.pop_back();
+        return s;
+    }
+
+    static const char* sourceName(int k){ return k==0 ? "wikipedia" : "live"; }
+};
+
 Metrics eval(TinyTransformer&m,const std::vector<Example>&set){
     if(set.empty()) return {};
     double loss=0; int correct=0,total=0;
@@ -2003,11 +2167,13 @@ public:
     Goal4Dataset goal4data;
     Goal5UncertaintyBrain goal5;
     Goal5Dataset goal5data;
+    Goal6SearchBrain goal6;
+    Goal6Dataset goal6data;
     std::atomic<bool> pause{false};
     mutable std::mutex mu;
     explicit Impl(uint32_t s)
         :seed(s),model(s),curriculum(0),curriculum_start_step(0),data(s,0),
-         goal1(s),goal1data(s),goal2(s),goal2data(s),goal3(s),goal3data(s),goal4(s),goal4data(s),goal5(s),goal5data(s){}
+         goal1(s),goal1data(s),goal2(s),goal2data(s),goal3(s),goal3data(s),goal4(s),goal4data(s),goal5(s),goal5data(s),goal6(s),goal6data(s){}
 };
 
 Engine::Engine(uint32_t seed):impl_(std::make_unique<Impl>(seed)){}
@@ -2143,6 +2309,27 @@ std::string Engine::classifyGoal5(const std::string& text) const {
     return s.str();
 }
 
+Metrics Engine::evaluateGoal6Train(){ std::lock_guard<std::mutex> g(impl_->mu); return impl_->goal6.evaluate(impl_->goal6data.train); }
+Metrics Engine::evaluateGoal6Validation(){ std::lock_guard<std::mutex> g(impl_->mu); return impl_->goal6.evaluate(impl_->goal6data.val); }
+Metrics Engine::evaluateGoal6Test(){ std::lock_guard<std::mutex> g(impl_->mu); return impl_->goal6.evaluate(impl_->goal6data.test); }
+Goal6TrainResult Engine::trainGoal6(int steps,int batch,float lr){
+    std::lock_guard<std::mutex> g(impl_->mu);
+    return impl_->goal6.train(impl_->goal6data,steps,batch,lr);
+}
+int Engine::goal6Step() const { std::lock_guard<std::mutex> g(impl_->mu); return impl_->goal6.step; }
+int Engine::goal6ParameterCount() const { std::lock_guard<std::mutex> g(impl_->mu); return impl_->goal6.parameterCount(); }
+std::string Engine::planGoal6(const std::string& text) const {
+    std::lock_guard<std::mutex> g(impl_->mu);
+    float confidence=0.0f;
+    int label=impl_->goal6.predict(text,&confidence);
+    std::ostringstream s;
+    s<<std::fixed<<std::setprecision(4)
+     <<"{\"source\":\""<<Goal6SearchBrain::sourceName(label)
+     <<"\",\"confidence\":"<<confidence
+     <<",\"query\":\""<<esc(Goal6SearchBrain::queryFrom(text))<<"\"}";
+    return s.str();
+}
+
 void Engine::requestPause(){impl_->pause.store(true);} void Engine::clearPause(){impl_->pause.store(false);}
 
 TrainResult Engine::train(int steps,int batch,float lr){
@@ -2229,8 +2416,8 @@ bool Engine::saveCheckpoint(const std::string&dir) const{
     try{
         std::filesystem::create_directories(dir);
         std::ofstream w(dir+"/weights.bin",std::ios::binary); if(!w)return false;
-        const char magic[8]={'M','O','T','A','I','0','1','6'}; w.write(magic,8);
-        uint32_t ver=10,seed=impl_->seed,step=impl_->step,level=impl_->curriculum,start_step=impl_->curriculum_start_step,pc=impl_->model.p.size();
+        const char magic[8]={'M','O','T','A','I','0','1','7'}; w.write(magic,8);
+        uint32_t ver=11,seed=impl_->seed,step=impl_->step,level=impl_->curriculum,start_step=impl_->curriculum_start_step,pc=impl_->model.p.size();
         w.write((char*)&ver,4); w.write((char*)&seed,4); w.write((char*)&step,4); w.write((char*)&level,4); w.write((char*)&start_step,4); w.write((char*)&pc,4);
         for(auto&z:impl_->model.p){
             uint32_t nl=z.name.size(),sz=z.value.n->data.size();
@@ -2266,6 +2453,12 @@ bool Engine::saveCheckpoint(const std::string&dir) const{
         w.write((char*)&goal5_step,4); w.write((char*)&goal5_w,4); w.write((char*)&goal5_b,4);
         w.write((char*)impl_->goal5.w.data(),goal5_w*sizeof(float));
         w.write((char*)impl_->goal5.b.data(),goal5_b*sizeof(float));
+        uint32_t goal6_step=static_cast<uint32_t>(impl_->goal6.step);
+        uint32_t goal6_w=static_cast<uint32_t>(impl_->goal6.w.size());
+        uint32_t goal6_b=static_cast<uint32_t>(impl_->goal6.b.size());
+        w.write((char*)&goal6_step,4); w.write((char*)&goal6_w,4); w.write((char*)&goal6_b,4);
+        w.write((char*)impl_->goal6.w.data(),goal6_w*sizeof(float));
+        w.write((char*)impl_->goal6.b.data(),goal6_b*sizeof(float));
         w.close();
         Metrics va=eval(const_cast<TinyTransformer&>(impl_->model),impl_->data.val);
         Metrics r0=eval(const_cast<TinyTransformer&>(impl_->model),impl_->data.retention_l0);
@@ -2293,6 +2486,8 @@ bool Engine::saveCheckpoint(const std::string&dir) const{
          <<",\n  \"goal4_validation_accuracy\": "<<impl_->goal4.evaluate(impl_->goal4data.val).answer_accuracy
          <<",\n  \"goal5_step\": "<<impl_->goal5.step
          <<",\n  \"goal5_validation_accuracy\": "<<impl_->goal5.evaluate(impl_->goal5data.val).answer_accuracy
+         <<",\n  \"goal6_step\": "<<impl_->goal6.step
+         <<",\n  \"goal6_validation_accuracy\": "<<impl_->goal6.evaluate(impl_->goal6data.val).answer_accuracy
          <<",\n  \"pretrained_model\": false,\n  \"weights_origin\": \"random_then_local_training\"\n}\n";
         return (bool)j;
     }catch(...){return false;}
@@ -2336,6 +2531,9 @@ bool Engine::loadCheckpoint(const std::string&dir){
         }else if(m=="MOTAI016"){
             w.read((char*)&ver,4); w.read((char*)&seed,4); w.read((char*)&step,4); w.read((char*)&level,4); w.read((char*)&start_step,4); w.read((char*)&pc,4);
             if(ver!=10 || level>5 || start_step>step) return false;
+        }else if(m=="MOTAI017"){
+            w.read((char*)&ver,4); w.read((char*)&seed,4); w.read((char*)&step,4); w.read((char*)&level,4); w.read((char*)&start_step,4); w.read((char*)&pc,4);
+            if(ver!=11 || level>5 || start_step>step) return false;
         }else return false;
 
         // Migrazione per vocabolario 11 -> 12: carica per nome e conserva il nuovo token ? inizializzato localmente.
@@ -2417,6 +2615,16 @@ bool Engine::loadCheckpoint(const std::string&dir){
             if(!w) return false;
             loadedGoal5.step=static_cast<int>(goal5_step);
         }
+        Goal6SearchBrain loadedGoal6(seed);
+        if(ver>=11){
+            uint32_t goal6_step=0,goal6_w=0,goal6_b=0;
+            w.read((char*)&goal6_step,4); w.read((char*)&goal6_w,4); w.read((char*)&goal6_b,4);
+            if(goal6_w!=loadedGoal6.w.size() || goal6_b!=loadedGoal6.b.size()) return false;
+            w.read((char*)loadedGoal6.w.data(),goal6_w*sizeof(float));
+            w.read((char*)loadedGoal6.b.data(),goal6_b*sizeof(float));
+            if(!w) return false;
+            loadedGoal6.step=static_cast<int>(goal6_step);
+        }
         impl_->seed=seed;
         impl_->curriculum=static_cast<int>(level);
         impl_->curriculum_start_step=static_cast<int>(start_step);
@@ -2432,6 +2640,8 @@ bool Engine::loadCheckpoint(const std::string&dir){
         impl_->goal4data=Goal4Dataset(seed);
         impl_->goal5=std::move(loadedGoal5);
         impl_->goal5data=Goal5Dataset(seed);
+        impl_->goal6=std::move(loadedGoal6);
+        impl_->goal6data=Goal6Dataset(seed);
         return true;
     }catch(...){return false;}
 }
@@ -2448,6 +2658,7 @@ std::string Engine::statusJson() const{
       <<",\"goal3_step\":"<<impl_->goal3.step<<",\"goal3_validation_accuracy\":"<<impl_->goal3.evaluate(impl_->goal3data.val).answer_accuracy
       <<",\"goal4_step\":"<<impl_->goal4.step<<",\"goal4_validation_accuracy\":"<<impl_->goal4.evaluate(impl_->goal4data.val).answer_accuracy
       <<",\"goal5_step\":"<<impl_->goal5.step<<",\"goal5_validation_accuracy\":"<<impl_->goal5.evaluate(impl_->goal5data.val).answer_accuracy
+      <<",\"goal6_step\":"<<impl_->goal6.step<<",\"goal6_validation_accuracy\":"<<impl_->goal6.evaluate(impl_->goal6data.val).answer_accuracy
       <<",\"pretrained\":false}";
     return s.str();
 }
