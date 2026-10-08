@@ -74,6 +74,13 @@ struct Goal7TrainResult {
     double elapsed_seconds = 0.0;
 };
 
+struct Goal8TrainResult {
+    int steps_completed = 0;
+    Metrics train;
+    Metrics validation;
+    double elapsed_seconds = 0.0;
+};
+
 class Engine {
 public:
     explicit Engine(uint32_t seed = 174);
@@ -167,6 +174,15 @@ public:
     int goal7Step() const;
     int goal7ParameterCount() const;
     std::string routeGoal7(const std::string& text) const;
+
+    // Mini-AI Goal 8: recognize and split a two-step plan, then let Goal7 execute each step.
+    Metrics evaluateGoal8Train();
+    Metrics evaluateGoal8Validation();
+    Metrics evaluateGoal8Test();
+    Goal8TrainResult trainGoal8(int steps, int batch_size = 24, float lr = 0.08f);
+    int goal8Step() const;
+    int goal8ParameterCount() const;
+    std::string planGoal8(const std::string& text) const;
 
 private:
     class Impl;
