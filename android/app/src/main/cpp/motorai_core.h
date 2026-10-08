@@ -46,6 +46,13 @@ struct Goal3TrainResult {
     double elapsed_seconds = 0.0;
 };
 
+struct Goal4TrainResult {
+    int steps_completed = 0;
+    Metrics train;
+    Metrics validation;
+    double elapsed_seconds = 0.0;
+};
+
 class Engine {
 public:
     explicit Engine(uint32_t seed = 174);
@@ -103,6 +110,15 @@ public:
     int goal3Step() const;
     int goal3ParameterCount() const;
     std::string classifyGoal3(const std::string& text) const;
+
+    // Mini-AI Goal 4: learn a two-step arithmetic plan, then execute it deterministically.
+    Metrics evaluateGoal4Train();
+    Metrics evaluateGoal4Validation();
+    Metrics evaluateGoal4Test();
+    Goal4TrainResult trainGoal4(int steps, int batch_size = 24, float lr = 0.08f);
+    int goal4Step() const;
+    int goal4ParameterCount() const;
+    std::string solveGoal4(const std::string& text) const;
 
 private:
     class Impl;

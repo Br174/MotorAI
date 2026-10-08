@@ -176,29 +176,18 @@ public class ChatActivity extends Activity {
                 double confidence = classified.optDouble("confidence",0.0);
                 int goal2 = MiniAiGoals.percent(this,1);
                 int goal3 = MiniAiGoals.percent(this,2);
+                int goal4 = MiniAiGoals.percent(this,3);
 
-                if (goal3 >= 100) {
-                    JSONObject memory = new JSONObject(MainActivity.nativeGoal3Classify(q));
-                    String action = memory.optString("action", "none");
-                    String slot = memory.optString("slot", "none");
-                    double memoryConfidence = memory.optDouble("confidence", 0.0);
-
-                    if (memoryConfidence >= 0.55 && "store".equals(action) && !"none".equals(slot)) {
-                        String value = ConversationMemory.extractValue(slot, q);
-                        if (!value.isEmpty()) {
-                            ConversationMemory.put(this, slot, value);
-                            reply = memoryStoredReply(slot, value);
-                        } else {
-                            reply = "Ho capito che vuoi farmi ricordare qualcosa, ma non sono riuscita a isolare il valore.";
-                        }
-                    } else if (memoryConfidence >= 0.55 && "recall".equals(action) && !"none".equals(slot)) {
-                        String value = ConversationMemory.get(this, slot);
-                        reply = value.isEmpty()
-                                ? "Non me l'hai ancora detto, oppure non l'ho memorizzato."
-                                : memoryRecallReply(slot, value);
+                if (goal4 >= 100) {
+                    JSONObject reasoning = new JSONObject(MainActivity.nativeGoal4Solve(q));
+                    if (reasoning.optBoolean("valid", false)
+                            && reasoning.optDouble("confidence", 0.0) >= 0.60) {
+                        reply = goal4Reply(reasoning);
                     } else {
-                        reply = learnedGoal2Reply(q, intent);
+                        reply = memoryOrLearnedReply(q, intent, goal3);
                     }
+                } else if (goal3 >= 100) {
+                    reply = memoryOrLearnedReply(q, intent, goal3);
                 } else if(goal2 >= 100) {
                     reply = learnedGoal2Reply(q, intent);
                 } else {
@@ -213,6 +202,49 @@ public class ChatActivity extends Activity {
             final String r=reply;
             runOnUiThread(() -> addAssistant(r));
         },"motorai-chat").start();
+    }
+
+    private String memoryOrLearnedReply(String q, String intent, int goal3) throws Exception {
+        if (goal3 < 100) return learnedGoal2Reply(q, intent);
+        JSONObject memory = new JSONObject(MainActivity.nativeGoal3Classify(q));
+        String action = memory.optString("action", "none");
+        String slot = memory.optString("slot", "none");
+        double memoryConfidence = memory.optDouble("confidence", 0.0);
+
+        if (memoryConfidence >= 0.55 && "store".equals(action) && !"none".equals(slot)) {
+            String value = ConversationMemory.extractValue(slot, q);
+            if (!value.isEmpty()) {
+                ConversationMemory.put(this, slot, value);
+                return memoryStoredReply(slot, value);
+            }
+            return "Ho capito che vuoi farmi ricordare qualcosa, ma non sono riuscita a isolare il valore.";
+        }
+        if (memoryConfidence >= 0.55 && "recall".equals(action) && !"none".equals(slot)) {
+            String value = ConversationMemory.get(this, slot);
+            return value.isEmpty()
+                    ? "Non me l'hai ancora detto, oppure non l'ho memorizzato."
+                    : memoryRecallReply(slot, value);
+        }
+        return learnedGoal2Reply(q, intent);
+    }
+
+    private String goal4Reply(JSONObject r) {
+        long a=r.optLong("a",0), b=r.optLong("b",0), c3=r.optLong("c",0), result=r.optLong("result",0);
+        String plan=r.optString("plan","");
+        String step1;
+        String step2;
+        switch (plan) {
+            case "add_add": step1=a+" + "+b+" = "+(a+b); step2=(a+b)+" + "+c3+" = "+result; break;
+            case "add_sub": step1=a+" + "+b+" = "+(a+b); step2=(a+b)+" - "+c3+" = "+result; break;
+            case "sub_add": step1=a+" - "+b+" = "+(a-b); step2=(a-b)+" + "+c3+" = "+result; break;
+            case "sub_sub": step1=a+" - "+b+" = "+(a-b); step2=(a-b)+" - "+c3+" = "+result; break;
+            case "mul_add": step1=a+" × "+b+" = "+(a*b); step2=(a*b)+" + "+c3+" = "+result; break;
+            case "mul_sub": step1=a+" × "+b+" = "+(a*b); step2=(a*b)+" - "+c3+" = "+result; break;
+            case "add_mul": step1=a+" + "+b+" = "+(a+b); step2=(a+b)+" × "+c3+" = "+result; break;
+            case "sub_mul": step1=a+" - "+b+" = "+(a-b); step2=(a-b)+" × "+c3+" = "+result; break;
+            default: return "Ho individuato il problema, ma non sono riuscita a costruire i passaggi.";
+        }
+        return "Passo 1: "+step1+". Passo 2: "+step2+". Risultato: "+result+".";
     }
 
     private String learnedGoal2Reply(String q, String intent) throws Exception {
