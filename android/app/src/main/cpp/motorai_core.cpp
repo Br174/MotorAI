@@ -1650,17 +1650,44 @@ public:
     static std::vector<float> reasoningFeatures(const std::string& text){
         std::istringstream in(normalizeItalian(text));
         std::ostringstream out;
+        std::vector<std::string> ops;
         std::string token;
         bool first=true;
+
+        auto pushOp=[&](const std::string& op){
+            if(ops.size()<2 && (ops.empty() || ops.back()!=op)) ops.push_back(op);
+        };
+
         while(in>>token){
             bool digits=!token.empty();
             for(char ch:token) if(ch<'0'||ch>'9'){digits=false;break;}
+
+            if(token=="aggiungo" || token=="ricevo" || token=="sommo" || token=="aumento")
+                pushOp("add");
+            else if(token=="tolgo" || token=="perdo" || token=="sottraggo" || token=="diminuisco" || token=="spendo")
+                pushOp("sub");
+            else if(token=="moltiplico" || token=="volte" || token=="faccio")
+                pushOp("mul");
+
             if(digits || numberWord(token)>=0) token="numero";
             if(!first) out<<" ";
             first=false;
             out<<token;
         }
-        return Goal1IntentBrain::features(out.str());
+
+        auto x=Goal1IntentBrain::features(out.str());
+        auto add=[&](const std::string& key,float weight){
+            x[goalHash(key)%FEATURES]+=weight;
+        };
+        if(!ops.empty()) add("g4:first:"+ops[0],3.0f);
+        if(ops.size()>1) add("g4:second:"+ops[1],3.0f);
+        if(ops.size()>1) add("g4:pair:"+ops[0]+":"+ops[1],4.0f);
+
+        double sq=0.0;
+        for(float v:x) sq+=double(v)*v;
+        float inv=sq>0.0?float(1.0/std::sqrt(sq)):1.0f;
+        for(float& v:x) v*=inv;
+        return x;
     }
 
     std::vector<float> logits(const std::string& text) const {
