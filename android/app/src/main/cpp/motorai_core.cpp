@@ -1811,6 +1811,189 @@ public:
     }
 };
 
+
+struct Goal5Example {
+    std::string text;
+    int label = 0; // 0 local_known, 1 verify
+};
+
+struct Goal5Dataset {
+    std::vector<Goal5Example> train, val, test;
+
+    static void add(std::vector<Goal5Example>& dst,int label,std::initializer_list<const char*> values){
+        for(const char* s:values) dst.push_back({s,label});
+    }
+
+    explicit Goal5Dataset(uint32_t seed){
+        add(train,0,{
+            "ciao","salve","buongiorno","come mi chiamo","qual e il mio nome",
+            "dove vivo","qual e la mia citta","qual e il mio colore preferito",
+            "che animale ho","parto da 10 aggiungo 3 poi tolgo 4",
+            "parto da 6 moltiplico per 4 poi aggiungo 3","ricorda che mi chiamo luca",
+            "vivo a roma","il mio colore preferito e blu","ho un cane di nome fido",
+            "parto da 12 tolgo 5 poi aggiungo 2"
+        });
+        add(val,0,{
+            "ehi come va","ti ricordi il mio nome","dove avevo detto di abitare",
+            "che colore ricordi di me","parto da 8 aggiungo 2 poi moltiplico tutto per 3",
+            "ricordati che vivo a torino"
+        });
+        add(test,0,{
+            "buonasera","come avevo detto di chiamarmi","ti ricordi la mia citta",
+            "dimmi il colore che preferisco","parto da 9 tolgo 3 poi aggiungo 7",
+            "salva che il mio animale e un gatto"
+        });
+
+        add(train,1,{
+            "chi e dante","quando e nato galileo","qual e la capitale del portogallo",
+            "che tempo fa oggi","quali sono le notizie di oggi","cerca informazioni su marte",
+            "trova notizie sulla tecnologia","quanto costa oggi il bitcoin",
+            "chi ha vinto la partita ieri","qual e il presidente attuale",
+            "spiegami una scoperta scientifica recente","cerca sul web la luna",
+            "qual e la popolazione di roma","quando parte il prossimo treno",
+            "dimmi il prezzo corrente dell oro","chi ha scritto i promessi sposi"
+        });
+        add(val,1,{
+            "qual e la capitale di spagna","che tempo fara domani","trova notizie sull astronomia",
+            "quanto vale oggi l euro","chi ha vinto ieri","quando e nato mozart"
+        });
+        add(test,1,{
+            "chi e michelangelo","qual e la capitale della grecia","cerca novita sulla scienza",
+            "che temperatura c e adesso","qual e il prezzo attuale del petrolio","quando e nato verdi"
+        });
+
+        std::mt19937 r(seed ^ 0x5A11C0DEu);
+        deterministicShuffle(train,r);
+        deterministicShuffle(val,r);
+        deterministicShuffle(test,r);
+    }
+};
+
+class Goal5UncertaintyBrain {
+public:
+    static constexpr int FEATURES=512;
+    static constexpr int CLASSES=2;
+    uint32_t seed=174;
+    int step=0;
+    std::vector<float> w;
+    std::vector<float> b;
+
+    explicit Goal5UncertaintyBrain(uint32_t s=174):seed(s),w(FEATURES*CLASSES),b(CLASSES,0.0f){
+        std::mt19937 r(seed ^ 0x5A11BEEFu);
+        for(float& x:w) x=0.003f*deterministicNormalApprox(r);
+    }
+
+    int parameterCount() const { return static_cast<int>(w.size()+b.size()); }
+
+    static std::vector<float> uncertaintyFeatures(const std::string& text){
+        std::string s=normalizeItalian(text);
+        auto x=Goal1IntentBrain::features(s);
+        auto has=[&](const std::string& q){return s.find(q)!=std::string::npos;};
+        auto add=[&](const std::string& key,float weight){x[goalHash(key)%FEATURES]+=weight;};
+
+        if(has("oggi")||has("adesso")||has("domani")||has("ieri")||has("attual")||
+           has("corrente")||has("prossimo")||has("notizie")||has("prezzo")||
+           has("meteo")||has("tempo fa")||has("temperatura")||has("traffico"))
+            add("g5:verify:live",4.0f);
+
+        if(has("chi e ")||has("chi era ")||has("capitale")||has("quando e nato")||
+           has("spiegami")||has("cerca ")||has("trova ")||has("popolazione")||has("chi ha scritto"))
+            add("g5:verify:fact",3.0f);
+
+        if(has("mi chiamo")||has("mio nome")||has("dove vivo")||has("dove abito")||
+           has("colore")||has("animale")||has("ricorda")||has("ricordi"))
+            add("g5:local:memory",4.0f);
+
+        if(has("parto da")||has("calcola")||has("quanto fa")||has("aggiungo")||
+           has("tolgo")||has("sommo")||has("sottraggo")||has("moltiplico"))
+            add("g5:local:calc",4.0f);
+
+        double sq=0.0;for(float v:x)sq+=double(v)*v;
+        float inv=sq>0.0?float(1.0/std::sqrt(sq)):1.0f;
+        for(float&v:x)v*=inv;
+        return x;
+    }
+
+    std::vector<float> logits(const std::string& text) const {
+        auto x=uncertaintyFeatures(text);
+        std::vector<float> z(CLASSES,0.0f);
+        for(int k=0;k<CLASSES;++k){
+            float s=b[k];
+            for(int i=0;i<FEATURES;++i) s+=x[i]*w[i*CLASSES+k];
+            z[k]=s;
+        }
+        return z;
+    }
+
+    int predict(const std::string& text,float* confidence=nullptr) const {
+        auto z=logits(text);
+        float mx=*std::max_element(z.begin(),z.end());
+        float sum=0.0f;
+        std::vector<float> p(CLASSES);
+        for(int k=0;k<CLASSES;++k){ p[k]=std::exp(z[k]-mx); sum+=p[k]; }
+        int best=0; float bp=-1.0f;
+        for(int k=0;k<CLASSES;++k){ p[k]/=sum; if(p[k]>bp){bp=p[k];best=k;} }
+        if(confidence) *confidence=bp;
+        return best;
+    }
+
+    Metrics evaluate(const std::vector<Goal5Example>& set) const {
+        if(set.empty()) return {};
+        double loss=0.0; int correct=0;
+        for(const auto& e:set){
+            auto z=logits(e.text);
+            float mx=*std::max_element(z.begin(),z.end());
+            float sum=0.0f; for(float v:z) sum+=std::exp(v-mx);
+            loss-=z[e.label]-mx-std::log(sum);
+            int best=static_cast<int>(std::max_element(z.begin(),z.end())-z.begin());
+            if(best==e.label) ++correct;
+        }
+        return {static_cast<float>(loss/set.size()),static_cast<float>(correct)/set.size()};
+    }
+
+    Goal5TrainResult train(const Goal5Dataset& data,int steps,int batch,float lr){
+        auto t0=std::chrono::steady_clock::now();
+        int done=0;
+        for(int s=0;s<steps;++s){
+            std::mt19937 r(seed ^ 0x5A11CAFEu ^ static_cast<uint32_t>(step+1));
+            std::vector<float> gw(w.size(),0.0f),gb(b.size(),0.0f);
+            for(int n=0;n<batch;++n){
+                const auto& e=data.train[deterministicIndex(r,data.train.size())];
+                auto x=uncertaintyFeatures(e.text);
+                std::vector<float> z(CLASSES);
+                float mx=-std::numeric_limits<float>::infinity();
+                for(int k=0;k<CLASSES;++k){
+                    float q=b[k];
+                    for(int i=0;i<FEATURES;++i) q+=x[i]*w[i*CLASSES+k];
+                    z[k]=q; mx=std::max(mx,q);
+                }
+                float sum=0.0f;
+                for(int k=0;k<CLASSES;++k){ z[k]=std::exp(z[k]-mx); sum+=z[k]; }
+                for(int k=0;k<CLASSES;++k){
+                    float gg=z[k]/sum-(k==e.label?1.0f:0.0f);
+                    gb[k]+=gg;
+                    for(int i=0;i<FEATURES;++i) if(x[i]!=0.0f) gw[i*CLASSES+k]+=gg*x[i];
+                }
+            }
+            float rate=lr/std::max(1,batch);
+            for(size_t i=0;i<w.size();++i) w[i]-=rate*(gw[i]+0.0002f*w[i]);
+            for(size_t i=0;i<b.size();++i) b[i]-=rate*gb[i];
+            ++step; ++done;
+        }
+        auto t1=std::chrono::steady_clock::now();
+        Goal5TrainResult out;
+        out.steps_completed=done;
+        out.train=evaluate(data.train);
+        out.validation=evaluate(data.val);
+        out.elapsed_seconds=std::chrono::duration<double>(t1-t0).count();
+        return out;
+    }
+
+    static const char* decisionName(int k){
+        return k==0 ? "local_known" : "verify";
+    }
+};
+
 Metrics eval(TinyTransformer&m,const std::vector<Example>&set){
     if(set.empty()) return {};
     double loss=0; int correct=0,total=0;
@@ -1847,11 +2030,13 @@ public:
     Goal3Dataset goal3data;
     Goal4ReasoningBrain goal4;
     Goal4Dataset goal4data;
+    Goal5UncertaintyBrain goal5;
+    Goal5Dataset goal5data;
     std::atomic<bool> pause{false};
     mutable std::mutex mu;
     explicit Impl(uint32_t s)
         :seed(s),model(s),curriculum(0),curriculum_start_step(0),data(s,0),
-         goal1(s),goal1data(s),goal2(s),goal2data(s),goal3(s),goal3data(s),goal4(s),goal4data(s){}
+         goal1(s),goal1data(s),goal2(s),goal2data(s),goal3(s),goal3data(s),goal4(s),goal4data(s),goal5(s),goal5data(s){}
 };
 
 Engine::Engine(uint32_t seed):impl_(std::make_unique<Impl>(seed)){}
@@ -1967,6 +2152,26 @@ std::string Engine::solveGoal4(const std::string& text) const {
     return s.str();
 }
 
+Metrics Engine::evaluateGoal5Train(){ std::lock_guard<std::mutex> g(impl_->mu); return impl_->goal5.evaluate(impl_->goal5data.train); }
+Metrics Engine::evaluateGoal5Validation(){ std::lock_guard<std::mutex> g(impl_->mu); return impl_->goal5.evaluate(impl_->goal5data.val); }
+Metrics Engine::evaluateGoal5Test(){ std::lock_guard<std::mutex> g(impl_->mu); return impl_->goal5.evaluate(impl_->goal5data.test); }
+Goal5TrainResult Engine::trainGoal5(int steps,int batch,float lr){
+    std::lock_guard<std::mutex> g(impl_->mu);
+    return impl_->goal5.train(impl_->goal5data,steps,batch,lr);
+}
+int Engine::goal5Step() const { std::lock_guard<std::mutex> g(impl_->mu); return impl_->goal5.step; }
+int Engine::goal5ParameterCount() const { std::lock_guard<std::mutex> g(impl_->mu); return impl_->goal5.parameterCount(); }
+std::string Engine::classifyGoal5(const std::string& text) const {
+    std::lock_guard<std::mutex> g(impl_->mu);
+    float confidence=0.0f;
+    int label=impl_->goal5.predict(text,&confidence);
+    std::ostringstream s;
+    s<<std::fixed<<std::setprecision(4)
+     <<"{\"decision\":\""<<Goal5UncertaintyBrain::decisionName(label)
+     <<"\",\"confidence\":"<<confidence<<"}";
+    return s.str();
+}
+
 void Engine::requestPause(){impl_->pause.store(true);} void Engine::clearPause(){impl_->pause.store(false);}
 
 TrainResult Engine::train(int steps,int batch,float lr){
@@ -2053,8 +2258,8 @@ bool Engine::saveCheckpoint(const std::string&dir) const{
     try{
         std::filesystem::create_directories(dir);
         std::ofstream w(dir+"/weights.bin",std::ios::binary); if(!w)return false;
-        const char magic[8]={'M','O','T','A','I','0','1','5'}; w.write(magic,8);
-        uint32_t ver=9,seed=impl_->seed,step=impl_->step,level=impl_->curriculum,start_step=impl_->curriculum_start_step,pc=impl_->model.p.size();
+        const char magic[8]={'M','O','T','A','I','0','1','6'}; w.write(magic,8);
+        uint32_t ver=10,seed=impl_->seed,step=impl_->step,level=impl_->curriculum,start_step=impl_->curriculum_start_step,pc=impl_->model.p.size();
         w.write((char*)&ver,4); w.write((char*)&seed,4); w.write((char*)&step,4); w.write((char*)&level,4); w.write((char*)&start_step,4); w.write((char*)&pc,4);
         for(auto&z:impl_->model.p){
             uint32_t nl=z.name.size(),sz=z.value.n->data.size();
@@ -2084,6 +2289,12 @@ bool Engine::saveCheckpoint(const std::string&dir) const{
         w.write((char*)&goal4_step,4); w.write((char*)&goal4_w,4); w.write((char*)&goal4_b,4);
         w.write((char*)impl_->goal4.w.data(),goal4_w*sizeof(float));
         w.write((char*)impl_->goal4.b.data(),goal4_b*sizeof(float));
+        uint32_t goal5_step=static_cast<uint32_t>(impl_->goal5.step);
+        uint32_t goal5_w=static_cast<uint32_t>(impl_->goal5.w.size());
+        uint32_t goal5_b=static_cast<uint32_t>(impl_->goal5.b.size());
+        w.write((char*)&goal5_step,4); w.write((char*)&goal5_w,4); w.write((char*)&goal5_b,4);
+        w.write((char*)impl_->goal5.w.data(),goal5_w*sizeof(float));
+        w.write((char*)impl_->goal5.b.data(),goal5_b*sizeof(float));
         w.close();
         Metrics va=eval(const_cast<TinyTransformer&>(impl_->model),impl_->data.val);
         Metrics r0=eval(const_cast<TinyTransformer&>(impl_->model),impl_->data.retention_l0);
@@ -2109,6 +2320,8 @@ bool Engine::saveCheckpoint(const std::string&dir) const{
          <<",\n  \"goal3_validation_accuracy\": "<<impl_->goal3.evaluate(impl_->goal3data.val).answer_accuracy
          <<",\n  \"goal4_step\": "<<impl_->goal4.step
          <<",\n  \"goal4_validation_accuracy\": "<<impl_->goal4.evaluate(impl_->goal4data.val).answer_accuracy
+         <<",\n  \"goal5_step\": "<<impl_->goal5.step
+         <<",\n  \"goal5_validation_accuracy\": "<<impl_->goal5.evaluate(impl_->goal5data.val).answer_accuracy
          <<",\n  \"pretrained_model\": false,\n  \"weights_origin\": \"random_then_local_training\"\n}\n";
         return (bool)j;
     }catch(...){return false;}
@@ -2149,6 +2362,9 @@ bool Engine::loadCheckpoint(const std::string&dir){
         }else if(m=="MOTAI015"){
             w.read((char*)&ver,4); w.read((char*)&seed,4); w.read((char*)&step,4); w.read((char*)&level,4); w.read((char*)&start_step,4); w.read((char*)&pc,4);
             if(ver!=9 || level>5 || start_step>step) return false;
+        }else if(m=="MOTAI016"){
+            w.read((char*)&ver,4); w.read((char*)&seed,4); w.read((char*)&step,4); w.read((char*)&level,4); w.read((char*)&start_step,4); w.read((char*)&pc,4);
+            if(ver!=10 || level>5 || start_step>step) return false;
         }else return false;
 
         // Migrazione per vocabolario 11 -> 12: carica per nome e conserva il nuovo token ? inizializzato localmente.
@@ -2220,6 +2436,16 @@ bool Engine::loadCheckpoint(const std::string&dir){
             if(!w) return false;
             loadedGoal4.step=static_cast<int>(goal4_step);
         }
+        Goal5UncertaintyBrain loadedGoal5(seed);
+        if(ver>=10){
+            uint32_t goal5_step=0,goal5_w=0,goal5_b=0;
+            w.read((char*)&goal5_step,4); w.read((char*)&goal5_w,4); w.read((char*)&goal5_b,4);
+            if(goal5_w!=loadedGoal5.w.size() || goal5_b!=loadedGoal5.b.size()) return false;
+            w.read((char*)loadedGoal5.w.data(),goal5_w*sizeof(float));
+            w.read((char*)loadedGoal5.b.data(),goal5_b*sizeof(float));
+            if(!w) return false;
+            loadedGoal5.step=static_cast<int>(goal5_step);
+        }
         impl_->seed=seed;
         impl_->curriculum=static_cast<int>(level);
         impl_->curriculum_start_step=static_cast<int>(start_step);
@@ -2233,6 +2459,8 @@ bool Engine::loadCheckpoint(const std::string&dir){
         impl_->goal3data=Goal3Dataset(seed);
         impl_->goal4=std::move(loadedGoal4);
         impl_->goal4data=Goal4Dataset(seed);
+        impl_->goal5=std::move(loadedGoal5);
+        impl_->goal5data=Goal5Dataset(seed);
         return true;
     }catch(...){return false;}
 }
@@ -2248,6 +2476,7 @@ std::string Engine::statusJson() const{
       <<",\"goal2_step\":"<<impl_->goal2.step<<",\"goal2_validation_accuracy\":"<<impl_->goal2.evaluate(impl_->goal2data.val).answer_accuracy
       <<",\"goal3_step\":"<<impl_->goal3.step<<",\"goal3_validation_accuracy\":"<<impl_->goal3.evaluate(impl_->goal3data.val).answer_accuracy
       <<",\"goal4_step\":"<<impl_->goal4.step<<",\"goal4_validation_accuracy\":"<<impl_->goal4.evaluate(impl_->goal4data.val).answer_accuracy
+      <<",\"goal5_step\":"<<impl_->goal5.step<<",\"goal5_validation_accuracy\":"<<impl_->goal5.evaluate(impl_->goal5data.val).answer_accuracy
       <<",\"pretrained\":false}";
     return s.str();
 }
