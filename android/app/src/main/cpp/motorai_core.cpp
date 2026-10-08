@@ -2129,6 +2129,96 @@ public:
     static const char* sourceName(int k){ return k==0 ? "wikipedia" : "live"; }
 };
 
+
+struct Goal7Example { std::string text; int label=0; };
+
+struct Goal7Dataset {
+    std::vector<Goal7Example> train,val,test;
+    static void add(std::vector<Goal7Example>& d,int label,std::initializer_list<const char*> xs){
+        for(const char* s:xs)d.push_back({s,label});
+    }
+    explicit Goal7Dataset(uint32_t seed){
+        // 0 direct_chat, 1 memory, 2 calculator/reasoning, 3 search.
+        add(train,0,{"ciao","come va","buongiorno","grazie","dimmi qualcosa","possiamo parlare",
+                     "salve motorai","come stai","presentati","rispondimi brevemente"});
+        add(val,0,{"ehi","buonasera","parliamo un po","come ti senti"});
+        add(test,0,{"ciao motorai","grazie mille","dimmi una frase","salve"});
+
+        add(train,1,{"mi chiamo luca","ricorda che vivo a roma","come mi chiamo","dove vivo",
+                     "il mio colore preferito e blu","qual e il mio colore preferito",
+                     "ho un cane di nome fido","che animale ho","ricordati il mio nome",
+                     "ti ricordi la mia citta"});
+        add(val,1,{"salva che mi chiamo anna","ricordi dove abito","che colore preferisco","ricorda che ho un gatto"});
+        add(test,1,{"come avevo detto di chiamarmi","salva che vivo a torino","ti ricordi il mio animale","qual era il mio colore"});
+
+        add(train,2,{"parto da 10 aggiungo 3 poi tolgo 4","parto da 6 moltiplico per 4 poi aggiungo 2",
+                     "calcola 10 piu 5","quanto fa 7 piu 8","fai questo calcolo",
+                     "parto da 12 tolgo 3 poi aggiungo 6","calcola venti meno sette",
+                     "quanto fa nove per tre","risolvi questo problema numerico","fammi il conto"});
+        add(val,2,{"parto da 8 aggiungo 2 poi moltiplico per 3","quanto fa 12 piu 4","calcola 18 meno 5","risolvi il calcolo"});
+        add(test,2,{"parto da 15 tolgo 4 poi aggiungo 3","quanto fa 6 per 7","calcola 11 piu 9","fai questo conto"});
+
+        add(train,3,{"chi e dante","cerca informazioni su marte","qual e la capitale della grecia",
+                     "quando e nato mozart","che tempo fa oggi","notizie di oggi",
+                     "prezzo corrente del bitcoin","parlami di raffaello","cerca sul web",
+                     "trova informazioni su galileo"});
+        add(val,3,{"chi e michelangelo","cerca informazioni sulla luna","meteo di domani","prezzo dell oro oggi"});
+        add(test,3,{"chi era giotto","qual e la capitale dell austria","notizie di oggi sulla scienza","cerca informazioni su saturno"});
+
+        std::mt19937 r(seed ^ 0x7A11C0DEu);
+        deterministicShuffle(train,r); deterministicShuffle(val,r); deterministicShuffle(test,r);
+    }
+};
+
+class Goal7ToolBrain {
+public:
+    static constexpr int FEATURES=512, CLASSES=4;
+    uint32_t seed=174; int step=0;
+    std::vector<float>w,b;
+    explicit Goal7ToolBrain(uint32_t s=174):seed(s),w(FEATURES*CLASSES),b(CLASSES,0.0f){
+        std::mt19937 r(seed ^ 0x7A11BEEFu);
+        for(float&x:w)x=0.003f*deterministicNormalApprox(r);
+    }
+    int parameterCount()const{return static_cast<int>(w.size()+b.size());}
+    std::vector<float> logits(const std::string&t)const{
+        auto x=Goal1IntentBrain::features(t); std::vector<float>z(CLASSES,0);
+        for(int k=0;k<CLASSES;++k){float s=b[k];for(int i=0;i<FEATURES;++i)s+=x[i]*w[i*CLASSES+k];z[k]=s;} return z;
+    }
+    int predict(const std::string&t,float*conf=nullptr)const{
+        auto z=logits(t);float mx=*std::max_element(z.begin(),z.end()),sum=0;std::vector<float>p(CLASSES);
+        for(int k=0;k<CLASSES;++k){p[k]=std::exp(z[k]-mx);sum+=p[k];}
+        int best=0;float bp=-1;for(int k=0;k<CLASSES;++k){p[k]/=sum;if(p[k]>bp){bp=p[k];best=k;}}
+        if(conf)*conf=bp;return best;
+    }
+    Metrics evaluate(const std::vector<Goal7Example>&set)const{
+        if(set.empty())return{};double loss=0;int correct=0;
+        for(const auto&e:set){auto z=logits(e.text);float mx=*std::max_element(z.begin(),z.end()),sum=0;
+            for(float v:z)sum+=std::exp(v-mx);loss-=z[e.label]-mx-std::log(sum);
+            int best=static_cast<int>(std::max_element(z.begin(),z.end())-z.begin());if(best==e.label)++correct;}
+        return{static_cast<float>(loss/set.size()),static_cast<float>(correct)/set.size()};
+    }
+    Goal7TrainResult train(const Goal7Dataset&data,int steps,int batch,float lr){
+        auto t0=std::chrono::steady_clock::now();int done=0;
+        for(int s=0;s<steps;++s){std::mt19937 r(seed^0x7A11CAFEu^static_cast<uint32_t>(step+1));
+            std::vector<float>gw(w.size(),0),gb(b.size(),0);
+            for(int n=0;n<batch;++n){const auto&e=data.train[deterministicIndex(r,data.train.size())];
+                auto x=Goal1IntentBrain::features(e.text);std::vector<float>z(CLASSES);float mx=-std::numeric_limits<float>::infinity();
+                for(int k=0;k<CLASSES;++k){float q=b[k];for(int i=0;i<FEATURES;++i)q+=x[i]*w[i*CLASSES+k];z[k]=q;mx=std::max(mx,q);}
+                float sum=0;for(int k=0;k<CLASSES;++k){z[k]=std::exp(z[k]-mx);sum+=z[k];}
+                for(int k=0;k<CLASSES;++k){float gg=z[k]/sum-(k==e.label?1.0f:0.0f);gb[k]+=gg;
+                    for(int i=0;i<FEATURES;++i)if(x[i]!=0)gw[i*CLASSES+k]+=gg*x[i];}}
+            float rate=lr/std::max(1,batch);for(size_t i=0;i<w.size();++i)w[i]-=rate*(gw[i]+0.0002f*w[i]);
+            for(size_t i=0;i<b.size();++i)b[i]-=rate*gb[i];++step;++done;}
+        auto t1=std::chrono::steady_clock::now();Goal7TrainResult out;out.steps_completed=done;
+        out.train=evaluate(data.train);out.validation=evaluate(data.val);
+        out.elapsed_seconds=std::chrono::duration<double>(t1-t0).count();return out;
+    }
+    static const char* toolName(int k){
+        static const char* names[CLASSES]={"chat","memory","calculator","search"};
+        return (k>=0&&k<CLASSES)?names[k]:"chat";
+    }
+};
+
 Metrics eval(TinyTransformer&m,const std::vector<Example>&set){
     if(set.empty()) return {};
     double loss=0; int correct=0,total=0;
@@ -2169,11 +2259,13 @@ public:
     Goal5Dataset goal5data;
     Goal6SearchBrain goal6;
     Goal6Dataset goal6data;
+    Goal7ToolBrain goal7;
+    Goal7Dataset goal7data;
     std::atomic<bool> pause{false};
     mutable std::mutex mu;
     explicit Impl(uint32_t s)
         :seed(s),model(s),curriculum(0),curriculum_start_step(0),data(s,0),
-         goal1(s),goal1data(s),goal2(s),goal2data(s),goal3(s),goal3data(s),goal4(s),goal4data(s),goal5(s),goal5data(s),goal6(s),goal6data(s){}
+         goal1(s),goal1data(s),goal2(s),goal2data(s),goal3(s),goal3data(s),goal4(s),goal4data(s),goal5(s),goal5data(s),goal6(s),goal6data(s),goal7(s),goal7data(s){}
 };
 
 Engine::Engine(uint32_t seed):impl_(std::make_unique<Impl>(seed)){}
@@ -2330,6 +2422,17 @@ std::string Engine::planGoal6(const std::string& text) const {
     return s.str();
 }
 
+Metrics Engine::evaluateGoal7Train(){std::lock_guard<std::mutex>g(impl_->mu);return impl_->goal7.evaluate(impl_->goal7data.train);}
+Metrics Engine::evaluateGoal7Validation(){std::lock_guard<std::mutex>g(impl_->mu);return impl_->goal7.evaluate(impl_->goal7data.val);}
+Metrics Engine::evaluateGoal7Test(){std::lock_guard<std::mutex>g(impl_->mu);return impl_->goal7.evaluate(impl_->goal7data.test);}
+Goal7TrainResult Engine::trainGoal7(int steps,int batch,float lr){std::lock_guard<std::mutex>g(impl_->mu);return impl_->goal7.train(impl_->goal7data,steps,batch,lr);}
+int Engine::goal7Step()const{std::lock_guard<std::mutex>g(impl_->mu);return impl_->goal7.step;}
+int Engine::goal7ParameterCount()const{std::lock_guard<std::mutex>g(impl_->mu);return impl_->goal7.parameterCount();}
+std::string Engine::routeGoal7(const std::string&text)const{
+    std::lock_guard<std::mutex>g(impl_->mu);float confidence=0;int label=impl_->goal7.predict(text,&confidence);
+    std::ostringstream s;s<<std::fixed<<std::setprecision(4)<<"{\"tool\":\""<<Goal7ToolBrain::toolName(label)<<"\",\"confidence\":"<<confidence<<"}";return s.str();
+}
+
 void Engine::requestPause(){impl_->pause.store(true);} void Engine::clearPause(){impl_->pause.store(false);}
 
 TrainResult Engine::train(int steps,int batch,float lr){
@@ -2416,8 +2519,8 @@ bool Engine::saveCheckpoint(const std::string&dir) const{
     try{
         std::filesystem::create_directories(dir);
         std::ofstream w(dir+"/weights.bin",std::ios::binary); if(!w)return false;
-        const char magic[8]={'M','O','T','A','I','0','1','7'}; w.write(magic,8);
-        uint32_t ver=11,seed=impl_->seed,step=impl_->step,level=impl_->curriculum,start_step=impl_->curriculum_start_step,pc=impl_->model.p.size();
+        const char magic[8]={'M','O','T','A','I','0','1','8'}; w.write(magic,8);
+        uint32_t ver=12,seed=impl_->seed,step=impl_->step,level=impl_->curriculum,start_step=impl_->curriculum_start_step,pc=impl_->model.p.size();
         w.write((char*)&ver,4); w.write((char*)&seed,4); w.write((char*)&step,4); w.write((char*)&level,4); w.write((char*)&start_step,4); w.write((char*)&pc,4);
         for(auto&z:impl_->model.p){
             uint32_t nl=z.name.size(),sz=z.value.n->data.size();
@@ -2459,6 +2562,9 @@ bool Engine::saveCheckpoint(const std::string&dir) const{
         w.write((char*)&goal6_step,4); w.write((char*)&goal6_w,4); w.write((char*)&goal6_b,4);
         w.write((char*)impl_->goal6.w.data(),goal6_w*sizeof(float));
         w.write((char*)impl_->goal6.b.data(),goal6_b*sizeof(float));
+        uint32_t goal7_step=static_cast<uint32_t>(impl_->goal7.step),goal7_w=static_cast<uint32_t>(impl_->goal7.w.size()),goal7_b=static_cast<uint32_t>(impl_->goal7.b.size());
+        w.write((char*)&goal7_step,4);w.write((char*)&goal7_w,4);w.write((char*)&goal7_b,4);
+        w.write((char*)impl_->goal7.w.data(),goal7_w*sizeof(float));w.write((char*)impl_->goal7.b.data(),goal7_b*sizeof(float));
         w.close();
         Metrics va=eval(const_cast<TinyTransformer&>(impl_->model),impl_->data.val);
         Metrics r0=eval(const_cast<TinyTransformer&>(impl_->model),impl_->data.retention_l0);
@@ -2488,6 +2594,8 @@ bool Engine::saveCheckpoint(const std::string&dir) const{
          <<",\n  \"goal5_validation_accuracy\": "<<impl_->goal5.evaluate(impl_->goal5data.val).answer_accuracy
          <<",\n  \"goal6_step\": "<<impl_->goal6.step
          <<",\n  \"goal6_validation_accuracy\": "<<impl_->goal6.evaluate(impl_->goal6data.val).answer_accuracy
+         <<",\n  \"goal7_step\": "<<impl_->goal7.step
+         <<",\n  \"goal7_validation_accuracy\": "<<impl_->goal7.evaluate(impl_->goal7data.val).answer_accuracy
          <<",\n  \"pretrained_model\": false,\n  \"weights_origin\": \"random_then_local_training\"\n}\n";
         return (bool)j;
     }catch(...){return false;}
@@ -2534,6 +2642,9 @@ bool Engine::loadCheckpoint(const std::string&dir){
         }else if(m=="MOTAI017"){
             w.read((char*)&ver,4); w.read((char*)&seed,4); w.read((char*)&step,4); w.read((char*)&level,4); w.read((char*)&start_step,4); w.read((char*)&pc,4);
             if(ver!=11 || level>5 || start_step>step) return false;
+        }else if(m=="MOTAI018"){
+            w.read((char*)&ver,4); w.read((char*)&seed,4); w.read((char*)&step,4); w.read((char*)&level,4); w.read((char*)&start_step,4); w.read((char*)&pc,4);
+            if(ver!=12 || level>5 || start_step>step) return false;
         }else return false;
 
         // Migrazione per vocabolario 11 -> 12: carica per nome e conserva il nuovo token ? inizializzato localmente.
@@ -2625,6 +2736,14 @@ bool Engine::loadCheckpoint(const std::string&dir){
             if(!w) return false;
             loadedGoal6.step=static_cast<int>(goal6_step);
         }
+        Goal7ToolBrain loadedGoal7(seed);
+        if(ver>=12){
+            uint32_t goal7_step=0,goal7_w=0,goal7_b=0;
+            w.read((char*)&goal7_step,4);w.read((char*)&goal7_w,4);w.read((char*)&goal7_b,4);
+            if(goal7_w!=loadedGoal7.w.size()||goal7_b!=loadedGoal7.b.size())return false;
+            w.read((char*)loadedGoal7.w.data(),goal7_w*sizeof(float));w.read((char*)loadedGoal7.b.data(),goal7_b*sizeof(float));
+            if(!w)return false;loadedGoal7.step=static_cast<int>(goal7_step);
+        }
         impl_->seed=seed;
         impl_->curriculum=static_cast<int>(level);
         impl_->curriculum_start_step=static_cast<int>(start_step);
@@ -2642,6 +2761,8 @@ bool Engine::loadCheckpoint(const std::string&dir){
         impl_->goal5data=Goal5Dataset(seed);
         impl_->goal6=std::move(loadedGoal6);
         impl_->goal6data=Goal6Dataset(seed);
+        impl_->goal7=std::move(loadedGoal7);
+        impl_->goal7data=Goal7Dataset(seed);
         return true;
     }catch(...){return false;}
 }
@@ -2659,6 +2780,7 @@ std::string Engine::statusJson() const{
       <<",\"goal4_step\":"<<impl_->goal4.step<<",\"goal4_validation_accuracy\":"<<impl_->goal4.evaluate(impl_->goal4data.val).answer_accuracy
       <<",\"goal5_step\":"<<impl_->goal5.step<<",\"goal5_validation_accuracy\":"<<impl_->goal5.evaluate(impl_->goal5data.val).answer_accuracy
       <<",\"goal6_step\":"<<impl_->goal6.step<<",\"goal6_validation_accuracy\":"<<impl_->goal6.evaluate(impl_->goal6data.val).answer_accuracy
+      <<",\"goal7_step\":"<<impl_->goal7.step<<",\"goal7_validation_accuracy\":"<<impl_->goal7.evaluate(impl_->goal7data.val).answer_accuracy
       <<",\"pretrained\":false}";
     return s.str();
 }
