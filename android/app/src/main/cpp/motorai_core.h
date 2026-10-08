@@ -60,6 +60,13 @@ struct Goal5TrainResult {
     double elapsed_seconds = 0.0;
 };
 
+struct Goal6TrainResult {
+    int steps_completed = 0;
+    Metrics train;
+    Metrics validation;
+    double elapsed_seconds = 0.0;
+};
+
 class Engine {
 public:
     explicit Engine(uint32_t seed = 174);
@@ -135,6 +142,15 @@ public:
     int goal5Step() const;
     int goal5ParameterCount() const;
     std::string classifyGoal5(const std::string& text) const;
+
+    // Mini-AI Goal 6: learn which web source class is appropriate and formulate a search query.
+    Metrics evaluateGoal6Train();
+    Metrics evaluateGoal6Validation();
+    Metrics evaluateGoal6Test();
+    Goal6TrainResult trainGoal6(int steps, int batch_size = 24, float lr = 0.08f);
+    int goal6Step() const;
+    int goal6ParameterCount() const;
+    std::string planGoal6(const std::string& text) const;
 
 private:
     class Impl;
