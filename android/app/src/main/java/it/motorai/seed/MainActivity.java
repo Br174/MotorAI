@@ -68,6 +68,10 @@ public class MainActivity extends Activity {
     public static native String nativeGoal5TrainChunk(int steps);
     public static native String nativeGoal5FinalTest();
     public static native String nativeGoal5Classify(String text);
+    public static native String nativeGoal6Evaluate();
+    public static native String nativeGoal6TrainChunk(int steps);
+    public static native String nativeGoal6FinalTest();
+    public static native String nativeGoal6Plan(String text);
 
     private TextView metrics;
     private TextView device;
@@ -187,7 +191,7 @@ public class MainActivity extends Activity {
         super.onCreate(stateBundle);
         UI_ACTIVE.set(true);
         MotorAIBackgroundJobService.schedule(this);
-        setTitle("MotorAI Seed 016");
+        setTitle("MotorAI Seed 017");
 
         ScrollView scroll = new ScrollView(this);
         LinearLayout root = new LinearLayout(this);
@@ -201,7 +205,7 @@ public class MainActivity extends Activity {
         header.setGravity(Gravity.CENTER_VERTICAL);
         LinearLayout headerText = new LinearLayout(this);
         headerText.setOrientation(LinearLayout.VERTICAL);
-        headerText.addView(compact("🧠 MotorAI Seed 016", 26, true));
+        headerText.addView(compact("🧠 MotorAI Seed 017", 26, true));
         headerText.addView(compact("AI locale · Apprendimento continuo", 14, false));
         header.addView(headerText, new LinearLayout.LayoutParams(0,
                 LinearLayout.LayoutParams.WRAP_CONTENT, 1));
@@ -467,7 +471,7 @@ public class MainActivity extends Activity {
                 } else if (resumed) {
                     ui(() -> state.setText("Stato: checkpoint ripreso automaticamente"));
                 } else {
-                    ui(() -> state.setText("Stato: Seed 016 pronta da pesi casuali"));
+                    ui(() -> state.setText("Stato: Seed 017 pronta da pesi casuali"));
                 }
             } catch (Exception e) {
                 ui(() -> state.setText(resumed ? "Stato: checkpoint ripreso" : "Stato: Seed 010 pronta"));
@@ -877,6 +881,10 @@ public class MainActivity extends Activity {
                 if (!runMiniAiGoal5Training()) return;
                 continue;
             }
+            if (active == 5) {
+                if (!runMiniAiGoal6Training()) return;
+                continue;
+            }
 
             int percent = MiniAiGoals.percent(this, active);
             MiniAiTrainingCoordinator.paused(this, active, percent, 0, 0.0,
@@ -922,6 +930,14 @@ public class MainActivity extends Activity {
     }
 
     private int goal5PercentFromValidation(double accuracy) {
+        final double chance = 0.50;
+        final double target = 0.90;
+        if (!Double.isFinite(accuracy) || accuracy <= chance) return 0;
+        double normalized = (accuracy - chance) / (target - chance);
+        return Math.max(0, Math.min(99, (int)Math.round(normalized * 99.0)));
+    }
+
+    private int goal6PercentFromValidation(double accuracy) {
         final double chance = 0.50;
         final double target = 0.90;
         if (!Double.isFinite(accuracy) || accuracy <= chance) return 0;
@@ -1584,6 +1600,132 @@ public class MainActivity extends Activity {
         return false;
     }
 
+    private boolean runMiniAiGoal6Training() throws Exception {
+        int already = MiniAiGoals.percent(this, 5);
+        if (already >= 100) {
+            ui(() -> updateActiveGoalUi(5, 100, 0, "completato"));
+            return true;
+        }
+
+        JSONObject foundation = new JSONObject(nativeEvaluate());
+        final int foundationStep = foundation.optInt("step", 3100);
+        final double memoryPercent = minRetention(foundation, 5) * 100.0;
+
+        int stablePasses = 0;
+        int bestPercent = already;
+        MiniAiTrainingStatus.update(this, 5, "training", already, 0, 0.0,
+                "Training reale dell'Obiettivo 6/10 avviato.");
+        state.post(() -> state.setText("Stato: Obiettivo Mini-AI 6/10 · training reale avviato"));
+
+        while (training.get()) {
+            Guard g = readGuard();
+            ui(() -> device.setText(g.description));
+            if (!g.allowed) {
+                rotateAndSaveCheckpoint();
+                training.set(false);
+                MiniAiTrainingCoordinator.paused(this, 5, bestPercent, 0, 0.0, g.reason);
+                return false;
+            }
+
+            JSONObject before = new JSONObject(nativeGoal6Evaluate());
+            double beforeAcc = before.optDouble("validation_accuracy", 0.0);
+            if (!rotateAndSaveCheckpoint()) {
+                training.set(false);
+                MiniAiTrainingCoordinator.error(this, 5, bestPercent, 0, beforeAcc,
+                        "Checkpoint pre-chunk non disponibile.");
+                return false;
+            }
+
+            JSONObject after = new JSONObject(nativeGoal6TrainChunk(20));
+            double validation = after.optDouble("validation_accuracy", 0.0);
+            int goalStep = after.optInt("goal6_step", 0);
+            int measured = goal6PercentFromValidation(validation);
+
+            if (validation + 0.20 < beforeAcc) {
+                nativeLoadCheckpoint(currentCheckpoint().getAbsolutePath());
+                training.set(false);
+                MiniAiTrainingCoordinator.error(this, 5, bestPercent, goalStep, validation,
+                        "Regressione rilevata: rollback automatico.");
+                appendDiagnosticFailure("Goal6: regressione forte rilevata · rollback");
+                return false;
+            }
+
+            if (!rotateAndSaveCheckpoint()) {
+                nativeLoadCheckpoint(currentCheckpoint().getAbsolutePath());
+                training.set(false);
+                MiniAiTrainingCoordinator.error(this, 5, bestPercent, goalStep, validation,
+                        "Salvataggio post-chunk fallito.");
+                return false;
+            }
+
+            bestPercent = Math.max(bestPercent, measured);
+            String evidence = String.format(Locale.ITALY,
+                    "Validation ricerca %.1f%% · step obiettivo %d",
+                    validation * 100.0, goalStep);
+            MiniAiTrainingCoordinator.progress(this, 5, bestPercent, goalStep, validation,
+                    evidence, "Sta imparando a scegliere la fonte e formulare una ricerca.");
+
+            EvolutionHistory.recordMiniAi(this, foundationStep, goalStep,
+                    bestPercent, memoryPercent, MiniAiGoals.totalPercent(this),
+                    "Mini-AI 6 · " + bestPercent + "%",
+                    "Ricerca su fonte controllata.");
+
+            getSharedPreferences("motorai_evolution", MODE_PRIVATE).edit()
+                    .putString("last_progress", "Mini-AI 6/10 · " + bestPercent
+                            + "% · step obiettivo " + goalStep).apply();
+
+            final int shownPercent = bestPercent;
+            final int shownStep = goalStep;
+            ui(() -> {
+                state.setText("Stato: TRAINING REALE · Obiettivo 6/10 · " + shownPercent + "%");
+                updateActiveGoalUi(5, shownPercent, shownStep, "training in corso");
+                refreshEvolutionChart();
+            });
+
+            stablePasses = validation >= 0.90 ? stablePasses + 1 : 0;
+            if (stablePasses >= 4) {
+                MiniAiTrainingCoordinator.testing(this, 5, bestPercent, goalStep, validation,
+                        "TEST finale separato in corso.");
+                JSONObject fin = new JSONObject(nativeGoal6FinalTest());
+                double test = fin.optDouble("test_accuracy", 0.0);
+                if (test >= 0.90) {
+                    String evidenceFinal = String.format(Locale.ITALY,
+                            "TEST ricerca separato superato: %.1f%% · step obiettivo %d",
+                            test * 100.0, goalStep);
+                    MiniAiTrainingCoordinator.completed(this, 5, goalStep, test, evidenceFinal);
+                    rotateAndSaveCheckpoint();
+                    EvolutionHistory.recordMiniAi(this, foundationStep, goalStep,
+                            100.0, memoryPercent, MiniAiGoals.totalPercent(this),
+                            "Mini-AI 6 completato",
+                            "TEST separato superato: sceglie fonte e formula una ricerca controllata.");
+                    getSharedPreferences("motorai_evolution", MODE_PRIVATE).edit()
+                            .putString("last_progress", String.format(Locale.ITALY,
+                                    "Mini-AI 6/10 completato · TEST %.1f%%", test * 100.0)).apply();
+                    ui(() -> {
+                        state.setText(String.format(Locale.ITALY,
+                                "Stato: ✅ Obiettivo Mini-AI 6/10 completato · TEST %.1f%%",
+                                test * 100.0));
+                        updateActiveGoalUi(6, MiniAiGoals.percent(this, 6), 0,
+                                "passaggio automatico al prossimo obiettivo");
+                        refreshEvolutionChart();
+                    });
+                    forceDiagnosticSnapshot(new JSONObject(nativeEvaluate()), "miniai_goal6_completed");
+                    return true;
+                }
+                stablePasses = 0;
+            }
+
+            if (goalStep >= 2500) {
+                training.set(false);
+                appendDiagnosticFailure("Goal6: limite di sicurezza 2500 step raggiunto senza accettazione");
+                MiniAiTrainingCoordinator.paused(this, 5, bestPercent, goalStep, validation,
+                        "Limite di sicurezza raggiunto.");
+                return false;
+            }
+        }
+        return false;
+    }
+
     private void stopTraining(String why) {
         training.set(false);
         nativeRequestPause();
@@ -1649,7 +1791,7 @@ public class MainActivity extends Activity {
             Guard g = readGuard();
 
             StringBuilder b = new StringBuilder();
-            b.append("MotorAI Seed 016\n");
+            b.append("MotorAI Seed 017\n");
             b.append("Snapshot: ").append(diagnosticsTimestamp()).append("\n");
             b.append("Motivo: ").append(reason).append("\n");
             b.append("Livello: L").append(level)
