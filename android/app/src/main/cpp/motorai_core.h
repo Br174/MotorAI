@@ -67,6 +67,13 @@ struct Goal6TrainResult {
     double elapsed_seconds = 0.0;
 };
 
+struct Goal7TrainResult {
+    int steps_completed = 0;
+    Metrics train;
+    Metrics validation;
+    double elapsed_seconds = 0.0;
+};
+
 class Engine {
 public:
     explicit Engine(uint32_t seed = 174);
@@ -151,6 +158,15 @@ public:
     int goal6Step() const;
     int goal6ParameterCount() const;
     std::string planGoal6(const std::string& text) const;
+
+    // Mini-AI Goal 7: learn which existing capability/tool should handle a request.
+    Metrics evaluateGoal7Train();
+    Metrics evaluateGoal7Validation();
+    Metrics evaluateGoal7Test();
+    Goal7TrainResult trainGoal7(int steps, int batch_size = 24, float lr = 0.08f);
+    int goal7Step() const;
+    int goal7ParameterCount() const;
+    std::string routeGoal7(const std::string& text) const;
 
 private:
     class Impl;
