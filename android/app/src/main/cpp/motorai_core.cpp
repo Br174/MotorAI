@@ -1885,8 +1885,32 @@ public:
 
     int parameterCount() const { return static_cast<int>(w.size()+b.size()); }
 
+    static std::vector<float> uncertaintyFeatures(const std::string& text){
+        std::string s=normalizeItalian(text);
+        auto x=Goal1IntentBrain::features(s);
+        auto has=[&](const std::string& q){return s.find(q)!=std::string::npos;};
+        auto add=[&](const std::string& key,float weight){x[goalHash(key)%FEATURES]+=weight;};
+        if(has("oggi")||has("adesso")||has("domani")||has("ieri")||has("attual")||
+           has("corrente")||has("prossimo")||has("notizie")||has("prezzo")||
+           has("meteo")||has("tempo fa")||has("temperatura")||has("traffico"))
+            add("g5:verify:live",4.0f);
+        if(has("chi e ")||has("chi era ")||has("capitale")||has("quando e nato")||
+           has("spiegami")||has("cerca ")||has("trova ")||has("popolazione")||has("chi ha scritto"))
+            add("g5:verify:fact",3.0f);
+        if(has("mi chiamo")||has("mio nome")||has("dove vivo")||has("dove abito")||
+           has("colore")||has("animale")||has("ricorda")||has("ricordi"))
+            add("g5:local:memory",4.0f);
+        if(has("parto da")||has("calcola")||has("quanto fa")||has("aggiungo")||
+           has("tolgo")||has("sommo")||has("sottraggo")||has("moltiplico"))
+            add("g5:local:calc",4.0f);
+        double sq=0.0;for(float v:x)sq+=double(v)*v;
+        float inv=sq>0.0?float(1.0/std::sqrt(sq)):1.0f;
+        for(float&v:x)v*=inv;
+        return x;
+    }
+
     std::vector<float> logits(const std::string& text) const {
-        auto x=Goal1IntentBrain::features(text);
+        auto x=uncertaintyFeatures(text);
         std::vector<float> z(CLASSES,0.0f);
         for(int k=0;k<CLASSES;++k){
             float s=b[k];
@@ -1930,7 +1954,7 @@ public:
             std::vector<float> gw(w.size(),0.0f),gb(b.size(),0.0f);
             for(int n=0;n<batch;++n){
                 const auto& e=data.train[deterministicIndex(r,data.train.size())];
-                auto x=Goal1IntentBrain::features(e.text);
+                auto x=uncertaintyFeatures(e.text);
                 std::vector<float> z(CLASSES);
                 float mx=-std::numeric_limits<float>::infinity();
                 for(int k=0;k<CLASSES;++k){
