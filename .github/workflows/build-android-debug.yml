@@ -115,6 +115,15 @@ jobs:
             -o /tmp/motorai_goal9_smoke
           /tmp/motorai_goal9_smoke
 
+      - name: Verify Mini-AI Goal10 assistant-cycle benchmark
+        id: goal10_gate
+        continue-on-error: true
+        run: |
+          g++ -std=c++20 -O2 -pthread -Iandroid/app/src/main/cpp \
+            tools/goal10_smoke.cpp android/app/src/main/cpp/motorai_core.cpp \
+            -o /tmp/motorai_goal10_smoke
+          /tmp/motorai_goal10_smoke
+
       - name: Verify background Auto-Training handoff
         run: |
           grep -q "scheduleKick" android/app/src/main/java/it/motorai/seed/MotorAIBackgroundJobService.java
@@ -165,6 +174,9 @@ jobs:
           grep -q "runGoal9Chunk" android/app/src/main/java/it/motorai/seed/MotorAIBackgroundJobService.java
           grep -q "nativeGoal9Review" android/app/src/main/java/it/motorai/seed/ChatActivity.java
           grep -q "selfCheckAndCorrect" android/app/src/main/java/it/motorai/seed/ChatActivity.java
+          grep -q "class MiniAiAssistantCycle" android/app/src/main/java/it/motorai/seed/MiniAiAssistantCycle.java
+          grep -q "runMiniAiGoal10Certification" android/app/src/main/java/it/motorai/seed/MainActivity.java
+          grep -q "runGoal10Certification" android/app/src/main/java/it/motorai/seed/MotorAIBackgroundJobService.java
 
       - name: Set up JDK 17
         uses: actions/setup-java@v5
@@ -195,10 +207,10 @@ jobs:
         run: gradle --no-daemon --stacktrace assembleDebug
 
       - name: Upload MotorAI APK
-        if: steps.native_gate.outcome == 'success' && steps.goal1_gate.outcome == 'success' && steps.goal2_gate.outcome == 'success' && steps.goal3_gate.outcome == 'success' && steps.goal4_gate.outcome == 'success' && steps.goal5_gate.outcome == 'success' && steps.goal6_gate.outcome == 'success' && steps.goal7_gate.outcome == 'success' && steps.goal8_gate.outcome == 'success' && steps.goal9_gate.outcome == 'success' && steps.android_build.outcome == 'success'
+        if: steps.native_gate.outcome == 'success' && steps.goal1_gate.outcome == 'success' && steps.goal2_gate.outcome == 'success' && steps.goal3_gate.outcome == 'success' && steps.goal4_gate.outcome == 'success' && steps.goal5_gate.outcome == 'success' && steps.goal6_gate.outcome == 'success' && steps.goal7_gate.outcome == 'success' && steps.goal8_gate.outcome == 'success' && steps.goal9_gate.outcome == 'success' && steps.goal10_gate.outcome == 'success' && steps.android_build.outcome == 'success'
         uses: actions/upload-artifact@v6
         with:
-          name: MotorAI-Seed020-debug
+          name: MotorAI-Seed021-debug
           path: android/app/build/outputs/apk/debug/*.apk
           if-no-files-found: error
           retention-days: 14
@@ -216,6 +228,7 @@ jobs:
           echo "Mini-AI Goal7: ${{ steps.goal7_gate.outcome }}"
           echo "Mini-AI Goal8: ${{ steps.goal8_gate.outcome }}"
           echo "Mini-AI Goal9: ${{ steps.goal9_gate.outcome }}"
+          echo "Mini-AI Goal10: ${{ steps.goal10_gate.outcome }}"
           echo "Android build: ${{ steps.android_build.outcome }}"
           test "${{ steps.native_gate.outcome }}" = "success"
           test "${{ steps.goal1_gate.outcome }}" = "success"
@@ -227,6 +240,7 @@ jobs:
           test "${{ steps.goal7_gate.outcome }}" = "success"
           test "${{ steps.goal8_gate.outcome }}" = "success"
           test "${{ steps.goal9_gate.outcome }}" = "success"
+          test "${{ steps.goal10_gate.outcome }}" = "success"
           test "${{ steps.android_build.outcome }}" = "success"
 
 # Seed004 final validation trigger
