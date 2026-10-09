@@ -2340,6 +2340,160 @@ public:
         if(p==std::string::npos){p=s.find(" e dopo ");skip=7;}if(p==std::string::npos)return false;
         a=s.substr(0,p);b=s.substr(p+skip);return !a.empty()&&!b.empty();}
 };
+
+struct Goal9Example { std::string text; int label=0; };
+
+struct Goal9Dataset {
+    std::vector<Goal9Example> train,val,test;
+    static void add(std::vector<Goal9Example>&d,int label,std::initializer_list<const char*>xs){
+        for(const char*s:xs)d.push_back({s,label});
+    }
+    explicit Goal9Dataset(uint32_t seed){
+        // 0 direct, 1 memory, 2 calculation, 3 source.
+        add(train,0,{
+            "domanda ciao risposta ciao sono qui",
+            "domanda come va risposta sto funzionando",
+            "domanda buongiorno risposta buongiorno dimmi pure",
+            "domanda grazie risposta prego",
+            "domanda presentati risposta sono motorai",
+            "domanda salve risposta ciao"
+        });
+        add(val,0,{
+            "domanda buonasera risposta buonasera",
+            "domanda ehi risposta ciao",
+            "domanda possiamo parlare risposta certo"
+        });
+        add(test,0,{
+            "domanda ciao motorai risposta ciao",
+            "domanda grazie mille risposta prego",
+            "domanda dimmi qualcosa risposta sono qui"
+        });
+
+        add(train,1,{
+            "domanda come mi chiamo risposta mi hai detto che ti chiami luca",
+            "domanda dove vivo risposta mi hai detto che vivi a roma",
+            "domanda qual e il mio colore preferito risposta mi hai detto blu",
+            "domanda che animale ho risposta mi hai detto che hai un cane",
+            "domanda ricordi il mio nome risposta ricordo marco",
+            "domanda ti ricordi la mia citta risposta ricordo torino"
+        });
+        add(val,1,{
+            "domanda come avevo detto di chiamarmi risposta ricordo anna",
+            "domanda dove avevo detto di abitare risposta vivi a milano",
+            "domanda che colore preferisco risposta preferisci verde"
+        });
+        add(test,1,{
+            "domanda ti ricordi il mio animale risposta hai un gatto",
+            "domanda qual era il mio nome risposta ti chiami paolo",
+            "domanda qual e la mia citta risposta vivi a napoli"
+        });
+
+        add(train,2,{
+            "domanda quanto fa sette piu otto risposta 7 + 8 = 15",
+            "domanda calcola dieci meno tre risposta 10 - 3 = 7",
+            "domanda quanto fa sei per quattro risposta 6 per 4 = 24",
+            "domanda parto da 10 aggiungo 3 poi tolgo 4 risposta risultato 9",
+            "domanda calcola venti piu cinque risposta risultato 25",
+            "domanda quanto fa nove per tre risposta risultato 27"
+        });
+        add(val,2,{
+            "domanda quanto fa dodici piu quattro risposta 16",
+            "domanda calcola diciotto meno cinque risposta 13",
+            "domanda parto da 8 aggiungo 2 poi moltiplico per 3 risposta 30"
+        });
+        add(test,2,{
+            "domanda quanto fa sei per sette risposta 42",
+            "domanda calcola undici piu nove risposta 20",
+            "domanda parto da 15 tolgo 4 poi aggiungo 3 risposta 14"
+        });
+
+        add(train,3,{
+            "domanda chi e dante risposta dante alighieri fonte wikipedia",
+            "domanda chi era galileo risposta galileo galilei fonte wikipedia",
+            "domanda qual e la capitale della grecia risposta atene fonte wikipedia",
+            "domanda cerca informazioni su marte risposta marte e un pianeta fonte wikipedia",
+            "domanda che tempo fa oggi risposta dato live da verificare",
+            "domanda prezzo corrente del bitcoin risposta dato live da verificare"
+        });
+        add(val,3,{
+            "domanda chi e michelangelo risposta fonte wikipedia",
+            "domanda cerca informazioni sulla luna risposta fonte wikipedia",
+            "domanda notizie di oggi risposta dato live da verificare"
+        });
+        add(test,3,{
+            "domanda chi era giotto risposta fonte wikipedia",
+            "domanda qual e la capitale dell austria risposta fonte wikipedia",
+            "domanda temperatura adesso risposta dato live da verificare"
+        });
+
+        std::mt19937 r(seed^0x9A11C0DEu);
+        deterministicShuffle(train,r);deterministicShuffle(val,r);deterministicShuffle(test,r);
+    }
+};
+
+class Goal9VerifierBrain {
+public:
+    static constexpr int FEATURES=512,CLASSES=4;
+    uint32_t seed=174; int step=0; std::vector<float>w,b;
+    explicit Goal9VerifierBrain(uint32_t s=174):seed(s),w(FEATURES*CLASSES),b(CLASSES,0.0f){
+        std::mt19937 r(seed^0x9A11BEEFu);for(float&x:w)x=0.003f*deterministicNormalApprox(r);
+    }
+    int parameterCount()const{return static_cast<int>(w.size()+b.size());}
+    static std::vector<float> features(const std::string&t){
+        std::string s=normalizeItalian(t);auto x=Goal1IntentBrain::features(s);
+        auto has=[&](const std::string&q){return s.find(q)!=std::string::npos;};
+        auto add=[&](const std::string&k,float q){x[goalHash(k)%FEATURES]+=q;};
+        if(has("mi chiamo")||has("mio nome")||has("dove vivo")||has("dove abito")||
+           has("colore")||has("animale")||has("ricordi")||has("ricordo"))
+            add("g9:memory",3.0f);
+        if(has("calcola")||has("quanto fa")||has("parto da")||has("aggiungo")||
+           has("tolgo")||has("moltiplico")||has("risultato"))
+            add("g9:calc",3.0f);
+        if(has("fonte")||has("wikipedia")||has("dato live")||has("notizie")||
+           has("prezzo")||has("temperatura")||has("chi e")||has("chi era")||has("capitale"))
+            add("g9:source",3.0f);
+        double sq=0;for(float v:x)sq+=double(v)*v;float inv=sq>0?float(1/std::sqrt(sq)):1;
+        for(float&v:x)v*=inv;return x;
+    }
+    std::vector<float>logits(const std::string&t)const{
+        auto x=features(t);std::vector<float>z(CLASSES);
+        for(int k=0;k<CLASSES;++k){float s=b[k];for(int i=0;i<FEATURES;++i)s+=x[i]*w[i*CLASSES+k];z[k]=s;}
+        return z;
+    }
+    int predict(const std::string&t,float*conf=nullptr)const{
+        auto z=logits(t);float mx=*std::max_element(z.begin(),z.end()),sum=0;std::vector<float>p(CLASSES);
+        for(int k=0;k<CLASSES;++k){p[k]=std::exp(z[k]-mx);sum+=p[k];}
+        int best=0;float bp=-1;for(int k=0;k<CLASSES;++k){p[k]/=sum;if(p[k]>bp){bp=p[k];best=k;}}
+        if(conf)*conf=bp;return best;
+    }
+    Metrics evaluate(const std::vector<Goal9Example>&set)const{
+        if(set.empty())return{};double loss=0;int correct=0;
+        for(const auto&e:set){auto z=logits(e.text);float mx=*std::max_element(z.begin(),z.end()),sum=0;
+            for(float v:z)sum+=std::exp(v-mx);loss-=z[e.label]-mx-std::log(sum);
+            int best=static_cast<int>(std::max_element(z.begin(),z.end())-z.begin());if(best==e.label)++correct;}
+        return{static_cast<float>(loss/set.size()),static_cast<float>(correct)/set.size()};
+    }
+    Goal9TrainResult train(const Goal9Dataset&data,int steps,int batch,float lr){
+        auto t0=std::chrono::steady_clock::now();int done=0;
+        for(int s=0;s<steps;++s){std::mt19937 r(seed^0x9A11CAFEu^static_cast<uint32_t>(step+1));
+            std::vector<float>gw(w.size(),0),gb(b.size(),0);
+            for(int n=0;n<batch;++n){const auto&e=data.train[deterministicIndex(r,data.train.size())];auto x=features(e.text);
+                std::vector<float>z(CLASSES);float mx=-std::numeric_limits<float>::infinity();
+                for(int k=0;k<CLASSES;++k){float q=b[k];for(int i=0;i<FEATURES;++i)q+=x[i]*w[i*CLASSES+k];z[k]=q;mx=std::max(mx,q);}
+                float sum=0;for(int k=0;k<CLASSES;++k){z[k]=std::exp(z[k]-mx);sum+=z[k];}
+                for(int k=0;k<CLASSES;++k){float gg=z[k]/sum-(k==e.label?1.0f:0.0f);gb[k]+=gg;
+                    for(int i=0;i<FEATURES;++i)if(x[i]!=0)gw[i*CLASSES+k]+=gg*x[i];}}
+            float rate=lr/std::max(1,batch);for(size_t i=0;i<w.size();++i)w[i]-=rate*(gw[i]+0.0002f*w[i]);
+            for(size_t i=0;i<b.size();++i)b[i]-=rate*gb[i];++step;++done;}
+        auto t1=std::chrono::steady_clock::now();Goal9TrainResult out;out.steps_completed=done;out.train=evaluate(data.train);
+        out.validation=evaluate(data.val);out.elapsed_seconds=std::chrono::duration<double>(t1-t0).count();return out;
+    }
+    static const char* checkName(int k){
+        static const char* n[CLASSES]={"direct","memory","calculation","source"};
+        return (k>=0&&k<CLASSES)?n[k]:"direct";
+    }
+};
+
 Metrics eval(TinyTransformer&m,const std::vector<Example>&set){
     if(set.empty()) return {};
     double loss=0; int correct=0,total=0;
@@ -2384,11 +2538,13 @@ public:
     Goal7Dataset goal7data;
     Goal8PlannerBrain goal8;
     Goal8Dataset goal8data;
+    Goal9VerifierBrain goal9;
+    Goal9Dataset goal9data;
     std::atomic<bool> pause{false};
     mutable std::mutex mu;
     explicit Impl(uint32_t s)
         :seed(s),model(s),curriculum(0),curriculum_start_step(0),data(s,0),
-         goal1(s),goal1data(s),goal2(s),goal2data(s),goal3(s),goal3data(s),goal4(s),goal4data(s),goal5(s),goal5data(s),goal6(s),goal6data(s),goal7(s),goal7data(s),goal8(s),goal8data(s){}
+         goal1(s),goal1data(s),goal2(s),goal2data(s),goal3(s),goal3data(s),goal4(s),goal4data(s),goal5(s),goal5data(s),goal6(s),goal6data(s),goal7(s),goal7data(s),goal8(s),goal8data(s),goal9(s),goal9data(s){}
 };
 
 Engine::Engine(uint32_t seed):impl_(std::make_unique<Impl>(seed)){}
@@ -2566,6 +2722,21 @@ std::string Engine::planGoal8(const std::string&text)const{
     std::lock_guard<std::mutex>g(impl_->mu);float confidence=0;int label=impl_->goal8.predict(text,&confidence);std::string a,b;bool split=Goal8PlannerBrain::split(text,a,b);
     std::ostringstream s;s<<std::fixed<<std::setprecision(4)<<"{\"mode\":\""<<((label==1&&split)?"sequence":"single")
       <<"\",\"confidence\":"<<confidence<<",\"first\":\""<<esc(split?a:normalizeItalian(text))<<"\",\"second\":\""<<esc(split?b:"")<<"\"}";return s.str();}
+
+Metrics Engine::evaluateGoal9Train(){std::lock_guard<std::mutex>g(impl_->mu);return impl_->goal9.evaluate(impl_->goal9data.train);}
+Metrics Engine::evaluateGoal9Validation(){std::lock_guard<std::mutex>g(impl_->mu);return impl_->goal9.evaluate(impl_->goal9data.val);}
+Metrics Engine::evaluateGoal9Test(){std::lock_guard<std::mutex>g(impl_->mu);return impl_->goal9.evaluate(impl_->goal9data.test);}
+Goal9TrainResult Engine::trainGoal9(int steps,int batch,float lr){std::lock_guard<std::mutex>g(impl_->mu);return impl_->goal9.train(impl_->goal9data,steps,batch,lr);}
+int Engine::goal9Step()const{std::lock_guard<std::mutex>g(impl_->mu);return impl_->goal9.step;}
+int Engine::goal9ParameterCount()const{std::lock_guard<std::mutex>g(impl_->mu);return impl_->goal9.parameterCount();}
+std::string Engine::reviewGoal9(const std::string&request,const std::string&draft)const{
+    std::lock_guard<std::mutex>g(impl_->mu);float confidence=0;
+    std::string joined="domanda "+normalizeItalian(request)+" risposta "+normalizeItalian(draft);
+    int label=impl_->goal9.predict(joined,&confidence);
+    std::ostringstream s;s<<std::fixed<<std::setprecision(4)
+      <<"{\"check\":\""<<Goal9VerifierBrain::checkName(label)<<"\",\"confidence\":"<<confidence<<"}";
+    return s.str();
+}
 
 void Engine::requestPause(){impl_->pause.store(true);} void Engine::clearPause(){impl_->pause.store(false);}
 
