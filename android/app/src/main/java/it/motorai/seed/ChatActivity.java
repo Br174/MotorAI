@@ -181,6 +181,8 @@ public class ChatActivity extends Activity {
                 int goal6 = MiniAiGoals.percent(this,5);
                 int goal7 = MiniAiGoals.percent(this,6);
                 int goal8 = MiniAiGoals.percent(this,7);
+                int goal9 = MiniAiGoals.percent(this,8);
+                boolean plannedSequence = false;
 
                 if (goal8 >= 100) {
                     JSONObject plan = new JSONObject(MainActivity.nativeGoal8Plan(q));
@@ -191,6 +193,7 @@ public class ChatActivity extends Activity {
                         String r1 = executePlannedStep(first);
                         String r2 = executePlannedStep(second);
                         reply = "Passo 1 — " + r1 + "\n\nPasso 2 — " + r2;
+                        plannedSequence = true;
                     } else {
                         reply = routedToolReply(q, intent, goal3, goal4, goal5, goal6);
                     }
@@ -223,12 +226,71 @@ public class ChatActivity extends Activity {
                             + "Sto ancora allenando la capacità di formulare risposte naturali "
                             + "(Obiettivo 2/10: " + goal2 + "%).";
                 }
+
+                if (goal9 >= 100 && !plannedSequence) {
+                    reply = selfCheckAndCorrect(q, reply, intent, goal3, goal4, goal5, goal6);
+                }
             } catch(Exception e) {
                 reply="Ho ricevuto il messaggio, ma il modulo di comprensione non è disponibile in questo momento.";
             }
             final String r=reply;
             runOnUiThread(() -> addAssistant(r));
         },"motorai-chat").start();
+    }
+
+    private String selfCheckAndCorrect(String q, String draft, String intent,
+                                       int goal3, int goal4, int goal5, int goal6) throws Exception {
+        JSONObject review = new JSONObject(MainActivity.nativeGoal9Review(q, draft == null ? "" : draft));
+        String check = review.optString("check", "direct");
+        double confidence = review.optDouble("confidence", 0.0);
+        if (confidence < 0.55) return draft;
+
+        if ("memory".equals(check)) {
+            if (goal3 < 100) return draft;
+            JSONObject memory = new JSONObject(MainActivity.nativeGoal3Classify(q));
+            String action = memory.optString("action", "none");
+            String slot = memory.optString("slot", "none");
+            if ("recall".equals(action) && !"none".equals(slot)) {
+                String value = ConversationMemory.get(this, slot);
+                if (!value.isEmpty() && (draft == null || !draft.toLowerCase(Locale.ITALY)
+                        .contains(value.toLowerCase(Locale.ITALY)))) {
+                    return memoryRecallReply(slot, value);
+                }
+            }
+            return draft;
+        }
+
+        if ("calculation".equals(check)) {
+            if (goal4 >= 100) {
+                JSONObject reasoning = new JSONObject(MainActivity.nativeGoal4Solve(q));
+                if (reasoning.optBoolean("valid", false)
+                        && reasoning.optDouble("confidence", 0.0) >= 0.60) {
+                    return goal4Reply(reasoning);
+                }
+            }
+            MiniAiCalculator.Result calc = MiniAiCalculator.solve(q);
+            if (calc.ok) return calc.expression + " = " + MiniAiCalculator.format(calc.value) + ".";
+            return draft;
+        }
+
+        if ("source".equals(check)) {
+            if (goal6 < 100) return draft;
+            JSONObject plan = new JSONObject(MainActivity.nativeGoal6Plan(q));
+            String source = plan.optString("source", "live");
+            if ("wikipedia".equals(source)) {
+                if (draft != null && draft.contains("Fonte: Wikipedia")) return draft;
+                return verifiedSearchReply(q);
+            }
+            if (draft != null && (draft.toLowerCase(Locale.ITALY).contains("live")
+                    || draft.toLowerCase(Locale.ITALY).contains("aggiornat"))) return draft;
+            return verifiedSearchReply(q);
+        }
+
+        if (draft == null || draft.trim().isEmpty()
+                || draft.toLowerCase(Locale.ITALY).contains("errore")) {
+            return learnedGoal2Reply(q, intent);
+        }
+        return draft;
     }
 
     private String executePlannedStep(String q) throws Exception {
