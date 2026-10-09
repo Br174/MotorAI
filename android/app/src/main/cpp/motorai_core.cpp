@@ -1430,33 +1430,8 @@ public:
 
     int parameterCount() const { return static_cast<int>(w.size()+b.size()); }
 
-    static std::vector<float> searchFeatures(const std::string& text){
-        std::string s=normalizeItalian(text);
-        auto x=Goal1IntentBrain::features(s);
-        auto has=[&](const std::string& q){return s.find(q)!=std::string::npos;};
-        auto add=[&](const std::string& key,float weight){x[goalHash(key)%FEATURES]+=weight;};
-
-        if(has("oggi")||has("adesso")||has("domani")||has("ieri")||has("attual")||
-           has("corrente")||has("prossimo")||has("questa sera")||has("questa mattina"))
-            add("g6:live:time",4.0f);
-        if(has("meteo")||has("tempo fa")||has("temperatura")||has("traffico")||
-           has("prezzo")||has("notizie")||has("treno")||has("autobus")||
-           has("partita")||has("cinema"))
-            add("g6:live:type",3.5f);
-
-        if(has("chi e ")||has("chi era ")||has("capitale")||has("quando e nato")||
-           has("quando e nata")||has("spiegami")||has("parlami di")||has("cos e")||
-           has("dove si trova")||has("cerca informazioni"))
-            add("g6:wiki:type",3.5f);
-
-        double sq=0.0; for(float v:x) sq+=double(v)*v;
-        float inv=sq>0.0?float(1.0/std::sqrt(sq)):1.0f;
-        for(float& v:x) v*=inv;
-        return x;
-    }
-
     std::vector<float> logits(const std::string& text) const {
-        auto x=searchFeatures(text);
+        auto x=Goal1IntentBrain::features(text);
         std::vector<float> z(CLASSES,0.0f);
         for(int k=0;k<CLASSES;++k){
             float s=b[k];
@@ -1500,7 +1475,7 @@ public:
             std::vector<float> gw(w.size(),0.0f),gb(b.size(),0.0f);
             for(int n=0;n<batch;++n){
                 const auto& e=data.train[deterministicIndex(r,data.train.size())];
-                auto x=searchFeatures(e.text);
+                auto x=Goal1IntentBrain::features(e.text);
                 std::vector<float> z(CLASSES);
                 float mx=-std::numeric_limits<float>::infinity();
                 for(int k=0;k<CLASSES;++k){
@@ -2085,8 +2060,33 @@ public:
 
     int parameterCount() const { return static_cast<int>(w.size()+b.size()); }
 
+    static std::vector<float> searchFeatures(const std::string& text){
+        std::string s=normalizeItalian(text);
+        auto x=Goal1IntentBrain::features(s);
+        auto has=[&](const std::string& q){return s.find(q)!=std::string::npos;};
+        auto add=[&](const std::string& key,float weight){x[goalHash(key)%FEATURES]+=weight;};
+
+        if(has("oggi")||has("adesso")||has("domani")||has("ieri")||has("attual")||
+           has("corrente")||has("prossimo")||has("questa sera")||has("questa mattina"))
+            add("g6:live:time",4.0f);
+        if(has("meteo")||has("tempo fa")||has("temperatura")||has("traffico")||
+           has("prezzo")||has("notizie")||has("treno")||has("autobus")||
+           has("partita")||has("cinema"))
+            add("g6:live:type",3.5f);
+
+        if(has("chi e ")||has("chi era ")||has("capitale")||has("quando e nato")||
+           has("quando e nata")||has("spiegami")||has("parlami di")||has("cos e")||
+           has("dove si trova")||has("cerca informazioni"))
+            add("g6:wiki:type",3.5f);
+
+        double sq=0.0; for(float v:x) sq+=double(v)*v;
+        float inv=sq>0.0?float(1.0/std::sqrt(sq)):1.0f;
+        for(float& v:x) v*=inv;
+        return x;
+    }
+
     std::vector<float> logits(const std::string& text) const {
-        auto x=Goal1IntentBrain::features(text);
+        auto x=searchFeatures(text);
         std::vector<float> z(CLASSES,0.0f);
         for(int k=0;k<CLASSES;++k){
             float s=b[k];
@@ -2130,7 +2130,7 @@ public:
             std::vector<float> gw(w.size(),0.0f),gb(b.size(),0.0f);
             for(int n=0;n<batch;++n){
                 const auto& e=data.train[deterministicIndex(r,data.train.size())];
-                auto x=Goal1IntentBrain::features(e.text);
+                auto x=searchFeatures(e.text);
                 std::vector<float> z(CLASSES);
                 float mx=-std::numeric_limits<float>::infinity();
                 for(int k=0;k<CLASSES;++k){
