@@ -177,15 +177,21 @@ public class ChatActivity extends Activity {
                 int goal2 = MiniAiGoals.percent(this,1);
                 int goal3 = MiniAiGoals.percent(this,2);
                 int goal4 = MiniAiGoals.percent(this,3);
+                int goal5 = MiniAiGoals.percent(this,4);
 
-                if (goal4 >= 100) {
-                    JSONObject reasoning = new JSONObject(MainActivity.nativeGoal4Solve(q));
-                    if (reasoning.optBoolean("valid", false)
-                            && reasoning.optDouble("confidence", 0.0) >= 0.60) {
-                        reply = goal4Reply(reasoning);
+                if (goal5 >= 100) {
+                    JSONObject certainty = new JSONObject(MainActivity.nativeGoal5Classify(q));
+                    String decision = certainty.optString("decision", "local_known");
+                    double certaintyConfidence = certainty.optDouble("confidence", 0.0);
+                    if ("verify".equals(decision) && certaintyConfidence >= 0.60) {
+                        reply = "Questa richiesta richiede una verifica esterna. "
+                                + "Non voglio inventare una risposta: il modulo di ricerca "
+                                + "(Obiettivo 6/10) deve ancora essere completato.";
                     } else {
-                        reply = memoryOrLearnedReply(q, intent, goal3);
+                        reply = localCapabilityReply(q, intent, goal3, goal4);
                     }
+                } else if (goal4 >= 100) {
+                    reply = localCapabilityReply(q, intent, goal3, goal4);
                 } else if (goal3 >= 100) {
                     reply = memoryOrLearnedReply(q, intent, goal3);
                 } else if(goal2 >= 100) {
@@ -202,6 +208,17 @@ public class ChatActivity extends Activity {
             final String r=reply;
             runOnUiThread(() -> addAssistant(r));
         },"motorai-chat").start();
+    }
+
+    private String localCapabilityReply(String q, String intent, int goal3, int goal4) throws Exception {
+        if (goal4 >= 100) {
+            JSONObject reasoning = new JSONObject(MainActivity.nativeGoal4Solve(q));
+            if (reasoning.optBoolean("valid", false)
+                    && reasoning.optDouble("confidence", 0.0) >= 0.60) {
+                return goal4Reply(reasoning);
+            }
+        }
+        return memoryOrLearnedReply(q, intent, goal3);
     }
 
     private String memoryOrLearnedReply(String q, String intent, int goal3) throws Exception {
