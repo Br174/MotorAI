@@ -2824,8 +2824,8 @@ bool Engine::saveCheckpoint(const std::string&dir) const{
     try{
         std::filesystem::create_directories(dir);
         std::ofstream w(dir+"/weights.bin",std::ios::binary); if(!w)return false;
-        const char magic[8]={'M','O','T','A','I','0','1','9'}; w.write(magic,8);
-        uint32_t ver=13,seed=impl_->seed,step=impl_->step,level=impl_->curriculum,start_step=impl_->curriculum_start_step,pc=impl_->model.p.size();
+        const char magic[8]={'M','O','T','A','I','0','2','0'}; w.write(magic,8);
+        uint32_t ver=14,seed=impl_->seed,step=impl_->step,level=impl_->curriculum,start_step=impl_->curriculum_start_step,pc=impl_->model.p.size();
         w.write((char*)&ver,4); w.write((char*)&seed,4); w.write((char*)&step,4); w.write((char*)&level,4); w.write((char*)&start_step,4); w.write((char*)&pc,4);
         for(auto&z:impl_->model.p){
             uint32_t nl=z.name.size(),sz=z.value.n->data.size();
@@ -2872,6 +2872,8 @@ bool Engine::saveCheckpoint(const std::string&dir) const{
         w.write((char*)impl_->goal7.w.data(),goal7_w*sizeof(float));w.write((char*)impl_->goal7.b.data(),goal7_b*sizeof(float));
         uint32_t goal8_step=static_cast<uint32_t>(impl_->goal8.step),goal8_w=static_cast<uint32_t>(impl_->goal8.w.size()),goal8_b=static_cast<uint32_t>(impl_->goal8.b.size());
         w.write((char*)&goal8_step,4);w.write((char*)&goal8_w,4);w.write((char*)&goal8_b,4);w.write((char*)impl_->goal8.w.data(),goal8_w*sizeof(float));w.write((char*)impl_->goal8.b.data(),goal8_b*sizeof(float));
+        uint32_t goal9_step=static_cast<uint32_t>(impl_->goal9.step),goal9_w=static_cast<uint32_t>(impl_->goal9.w.size()),goal9_b=static_cast<uint32_t>(impl_->goal9.b.size());
+        w.write((char*)&goal9_step,4);w.write((char*)&goal9_w,4);w.write((char*)&goal9_b,4);w.write((char*)impl_->goal9.w.data(),goal9_w*sizeof(float));w.write((char*)impl_->goal9.b.data(),goal9_b*sizeof(float));
         w.close();
         Metrics va=eval(const_cast<TinyTransformer&>(impl_->model),impl_->data.val);
         Metrics r0=eval(const_cast<TinyTransformer&>(impl_->model),impl_->data.retention_l0);
@@ -2905,6 +2907,8 @@ bool Engine::saveCheckpoint(const std::string&dir) const{
          <<",\n  \"goal7_validation_accuracy\": "<<impl_->goal7.evaluate(impl_->goal7data.val).answer_accuracy
          <<",\n  \"goal8_step\": "<<impl_->goal8.step
          <<",\n  \"goal8_validation_accuracy\": "<<impl_->goal8.evaluate(impl_->goal8data.val).answer_accuracy
+         <<",\n  \"goal9_step\": "<<impl_->goal9.step
+         <<",\n  \"goal9_validation_accuracy\": "<<impl_->goal9.evaluate(impl_->goal9data.val).answer_accuracy
          <<",\n  \"pretrained_model\": false,\n  \"weights_origin\": \"random_then_local_training\"\n}\n";
         return (bool)j;
     }catch(...){return false;}
@@ -2957,6 +2961,9 @@ bool Engine::loadCheckpoint(const std::string&dir){
         }else if(m=="MOTAI019"){
             w.read((char*)&ver,4); w.read((char*)&seed,4); w.read((char*)&step,4); w.read((char*)&level,4); w.read((char*)&start_step,4); w.read((char*)&pc,4);
             if(ver!=13 || level>5 || start_step>step) return false;
+        }else if(m=="MOTAI020"){
+            w.read((char*)&ver,4); w.read((char*)&seed,4); w.read((char*)&step,4); w.read((char*)&level,4); w.read((char*)&start_step,4); w.read((char*)&pc,4);
+            if(ver!=14 || level>5 || start_step>step) return false;
         }else return false;
 
         // Migrazione per vocabolario 11 -> 12: carica per nome e conserva il nuovo token ? inizializzato localmente.
@@ -3060,6 +3067,10 @@ bool Engine::loadCheckpoint(const std::string&dir){
         if(ver>=13){uint32_t st=0,ww=0,bb=0;w.read((char*)&st,4);w.read((char*)&ww,4);w.read((char*)&bb,4);
             if(ww!=loadedGoal8.w.size()||bb!=loadedGoal8.b.size())return false;w.read((char*)loadedGoal8.w.data(),ww*sizeof(float));w.read((char*)loadedGoal8.b.data(),bb*sizeof(float));
             if(!w)return false;loadedGoal8.step=static_cast<int>(st);}
+        Goal9VerifierBrain loadedGoal9(seed);
+        if(ver>=14){uint32_t st=0,ww=0,bb=0;w.read((char*)&st,4);w.read((char*)&ww,4);w.read((char*)&bb,4);
+            if(ww!=loadedGoal9.w.size()||bb!=loadedGoal9.b.size())return false;w.read((char*)loadedGoal9.w.data(),ww*sizeof(float));w.read((char*)loadedGoal9.b.data(),bb*sizeof(float));
+            if(!w)return false;loadedGoal9.step=static_cast<int>(st);}
         impl_->seed=seed;
         impl_->curriculum=static_cast<int>(level);
         impl_->curriculum_start_step=static_cast<int>(start_step);
@@ -3081,6 +3092,8 @@ bool Engine::loadCheckpoint(const std::string&dir){
         impl_->goal7data=Goal7Dataset(seed);
         impl_->goal8=std::move(loadedGoal8);
         impl_->goal8data=Goal8Dataset(seed);
+        impl_->goal9=std::move(loadedGoal9);
+        impl_->goal9data=Goal9Dataset(seed);
         return true;
     }catch(...){return false;}
 }
@@ -3100,6 +3113,7 @@ std::string Engine::statusJson() const{
       <<",\"goal6_step\":"<<impl_->goal6.step<<",\"goal6_validation_accuracy\":"<<impl_->goal6.evaluate(impl_->goal6data.val).answer_accuracy
       <<",\"goal7_step\":"<<impl_->goal7.step<<",\"goal7_validation_accuracy\":"<<impl_->goal7.evaluate(impl_->goal7data.val).answer_accuracy
       <<",\"goal8_step\":"<<impl_->goal8.step<<",\"goal8_validation_accuracy\":"<<impl_->goal8.evaluate(impl_->goal8data.val).answer_accuracy
+      <<",\"goal9_step\":"<<impl_->goal9.step<<",\"goal9_validation_accuracy\":"<<impl_->goal9.evaluate(impl_->goal9data.val).answer_accuracy
       <<",\"pretrained\":false}";
     return s.str();
 }
