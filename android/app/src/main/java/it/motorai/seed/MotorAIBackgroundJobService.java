@@ -218,6 +218,8 @@ public class MotorAIBackgroundJobService extends JobService {
                     continuePath = runGoal8Chunk(runtime);
                 } else if (active == 8) {
                     continuePath = runGoal9Chunk(runtime);
+                } else if (active == 9) {
+                    continuePath = runGoal10Certification();
                 } else {
                     MiniAiTrainingCoordinator.paused(this, active,
                             MiniAiGoals.percent(this, active), 0, 0.0,
@@ -987,6 +989,34 @@ public class MotorAIBackgroundJobService extends JobService {
         }
         sendCurrentTelemetry("background_training_miniai_goal9");
         return true;
+    }
+
+    private boolean runGoal10Certification() throws Exception {
+        MiniAiAssistantCycle.Result result = MiniAiAssistantCycle.evaluate(this);
+        MiniAiGoals.updateGoal(this, 9, result.percent, result.evidence);
+
+        JSONObject foundation = new JSONObject(MainActivity.nativeEvaluate());
+        double memory = min(retentions(foundation)) * 100.0;
+        int foundationStep = foundation.optInt("step", 3100);
+        EvolutionHistory.recordMiniAi(this, foundationStep, result.passed,
+                result.percent, memory, MiniAiGoals.totalPercent(this),
+                "Mini-AI 10 · " + result.percent + "%",
+                result.evidence);
+        appendProgress("Mini-AI 10/10 · " + result.percent + "% · "
+                + result.passed + "/" + result.total + " prove");
+
+        if (result.percent >= 100) {
+            MiniAiTrainingCoordinator.completed(this, 9, result.total, 1.0, result.evidence);
+            rotateAndSave();
+            sendCurrentTelemetry("background_miniai_goal10_completed");
+            return false;
+        }
+
+        MiniAiTrainingCoordinator.paused(this, 9, result.percent, result.passed,
+                result.total == 0 ? 0.0 : (double)result.passed / result.total,
+                result.evidence);
+        sendCurrentTelemetry("background_miniai_goal10_incomplete");
+        return false;
     }
 
     private boolean runLevel5Chunk(SharedPreferences runtime, SharedPreferences evo) throws Exception {
