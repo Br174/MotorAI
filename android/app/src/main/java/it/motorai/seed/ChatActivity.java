@@ -178,15 +178,20 @@ public class ChatActivity extends Activity {
                 int goal3 = MiniAiGoals.percent(this,2);
                 int goal4 = MiniAiGoals.percent(this,3);
                 int goal5 = MiniAiGoals.percent(this,4);
+                int goal6 = MiniAiGoals.percent(this,5);
 
                 if (goal5 >= 100) {
                     JSONObject certainty = new JSONObject(MainActivity.nativeGoal5Classify(q));
                     String decision = certainty.optString("decision", "local_known");
                     double certaintyConfidence = certainty.optDouble("confidence", 0.0);
                     if ("verify".equals(decision) && certaintyConfidence >= 0.60) {
-                        reply = "Questa richiesta richiede una verifica esterna. "
-                                + "Non voglio inventare una risposta: il modulo di ricerca "
-                                + "(Obiettivo 6/10) deve ancora essere completato.";
+                        if (goal6 >= 100) {
+                            reply = verifiedSearchReply(q);
+                        } else {
+                            reply = "Questa richiesta richiede una verifica esterna. "
+                                    + "Non voglio inventare una risposta: il modulo di ricerca "
+                                    + "(Obiettivo 6/10) deve ancora essere completato.";
+                        }
                     } else {
                         reply = localCapabilityReply(q, intent, goal3, goal4);
                     }
@@ -208,6 +213,27 @@ public class ChatActivity extends Activity {
             final String r=reply;
             runOnUiThread(() -> addAssistant(r));
         },"motorai-chat").start();
+    }
+
+    private String verifiedSearchReply(String q) throws Exception {
+        JSONObject plan = new JSONObject(MainActivity.nativeGoal6Plan(q));
+        String source = plan.optString("source", "live");
+        double confidence = plan.optDouble("confidence", 0.0);
+        String query = plan.optString("query", q).trim();
+
+        if (confidence < 0.60) {
+            return "So che devo verificare questa richiesta, ma non sono abbastanza sicura di quale fonte usare.";
+        }
+        if (!"wikipedia".equals(source)) {
+            return "Questa informazione è di tipo live o molto aggiornata. "
+                    + "Al momento non ho ancora una fonte live affidabile collegata e preferisco non inventare.";
+        }
+
+        MiniAiWebSearch.Result result = MiniAiWebSearch.wikipedia(query);
+        if (!result.ok) {
+            return "Ho provato a verificare su Wikipedia, ma la ricerca non è riuscita: " + result.error;
+        }
+        return result.extract + "\n\nFonte: " + result.source + " — " + result.title;
     }
 
     private String localCapabilityReply(String q, String intent, int goal3, int goal4) throws Exception {
