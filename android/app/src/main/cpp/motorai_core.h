@@ -81,6 +81,13 @@ struct Goal8TrainResult {
     double elapsed_seconds = 0.0;
 };
 
+struct Goal9TrainResult {
+    int steps_completed = 0;
+    Metrics train;
+    Metrics validation;
+    double elapsed_seconds = 0.0;
+};
+
 class Engine {
 public:
     explicit Engine(uint32_t seed = 174);
@@ -183,6 +190,15 @@ public:
     int goal8Step() const;
     int goal8ParameterCount() const;
     std::string planGoal8(const std::string& text) const;
+
+    // Mini-AI Goal 9: inspect a draft answer and choose an independent verification strategy.
+    Metrics evaluateGoal9Train();
+    Metrics evaluateGoal9Validation();
+    Metrics evaluateGoal9Test();
+    Goal9TrainResult trainGoal9(int steps, int batch_size = 24, float lr = 0.08f);
+    int goal9Step() const;
+    int goal9ParameterCount() const;
+    std::string reviewGoal9(const std::string& request, const std::string& draft) const;
 
 private:
     class Impl;

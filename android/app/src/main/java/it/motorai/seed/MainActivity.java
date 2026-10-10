@@ -80,6 +80,10 @@ public class MainActivity extends Activity {
     public static native String nativeGoal8TrainChunk(int steps);
     public static native String nativeGoal8FinalTest();
     public static native String nativeGoal8Plan(String text);
+    public static native String nativeGoal9Evaluate();
+    public static native String nativeGoal9TrainChunk(int steps);
+    public static native String nativeGoal9FinalTest();
+    public static native String nativeGoal9Review(String request, String draft);
 
     private TextView metrics;
     private TextView device;
@@ -199,7 +203,7 @@ public class MainActivity extends Activity {
         super.onCreate(stateBundle);
         UI_ACTIVE.set(true);
         MotorAIBackgroundJobService.schedule(this);
-        setTitle("MotorAI Seed 019");
+        setTitle("MotorAI Seed 020");
 
         ScrollView scroll = new ScrollView(this);
         LinearLayout root = new LinearLayout(this);
@@ -213,7 +217,7 @@ public class MainActivity extends Activity {
         header.setGravity(Gravity.CENTER_VERTICAL);
         LinearLayout headerText = new LinearLayout(this);
         headerText.setOrientation(LinearLayout.VERTICAL);
-        headerText.addView(compact("🧠 MotorAI Seed 019", 26, true));
+        headerText.addView(compact("🧠 MotorAI Seed 020", 26, true));
         headerText.addView(compact("AI locale · Apprendimento continuo", 14, false));
         header.addView(headerText, new LinearLayout.LayoutParams(0,
                 LinearLayout.LayoutParams.WRAP_CONTENT, 1));
@@ -479,7 +483,7 @@ public class MainActivity extends Activity {
                 } else if (resumed) {
                     ui(() -> state.setText("Stato: checkpoint ripreso automaticamente"));
                 } else {
-                    ui(() -> state.setText("Stato: Seed 019 pronta da pesi casuali"));
+                    ui(() -> state.setText("Stato: Seed 020 pronta da pesi casuali"));
                 }
             } catch (Exception e) {
                 ui(() -> state.setText(resumed ? "Stato: checkpoint ripreso" : "Stato: Seed 010 pronta"));
@@ -901,6 +905,10 @@ public class MainActivity extends Activity {
                 if (!runMiniAiGoal8Training()) return;
                 continue;
             }
+            if (active == 8) {
+                if (!runMiniAiGoal9Training()) return;
+                continue;
+            }
 
             int percent = MiniAiGoals.percent(this, active);
             MiniAiTrainingCoordinator.paused(this, active, percent, 0, 0.0,
@@ -971,6 +979,14 @@ public class MainActivity extends Activity {
 
     private int goal8PercentFromValidation(double accuracy) {
         final double chance = 0.50;
+        final double target = 0.90;
+        if (!Double.isFinite(accuracy) || accuracy <= chance) return 0;
+        double normalized = (accuracy - chance) / (target - chance);
+        return Math.max(0, Math.min(99, (int)Math.round(normalized * 99.0)));
+    }
+
+    private int goal9PercentFromValidation(double accuracy) {
+        final double chance = 0.25;
         final double target = 0.90;
         if (!Double.isFinite(accuracy) || accuracy <= chance) return 0;
         double normalized = (accuracy - chance) / (target - chance);
@@ -1837,6 +1853,112 @@ public class MainActivity extends Activity {
         }return false;
     }
 
+    private boolean runMiniAiGoal9Training() throws Exception {
+        int already=MiniAiGoals.percent(this,8);
+        if(already>=100){ui(()->updateActiveGoalUi(8,100,0,"completato"));return true;}
+
+        JSONObject foundation=new JSONObject(nativeEvaluate());
+        final int foundationStep=foundation.optInt("step",3100);
+        final double memoryPercent=minRetention(foundation,5)*100.0;
+        int stablePasses=0,bestPercent=already;
+        MiniAiTrainingStatus.update(this,8,"training",already,0,0.0,
+                "Training reale dell'Obiettivo 9/10 avviato.");
+        state.post(()->state.setText("Stato: Obiettivo Mini-AI 9/10 · training reale avviato"));
+
+        while(training.get()){
+            Guard g=readGuard();
+            ui(()->device.setText(g.description));
+            if(!g.allowed){
+                rotateAndSaveCheckpoint();
+                training.set(false);
+                MiniAiTrainingCoordinator.paused(this,8,bestPercent,0,0.0,g.reason);
+                return false;
+            }
+
+            JSONObject before=new JSONObject(nativeGoal9Evaluate());
+            double beforeAcc=before.optDouble("validation_accuracy",0.0);
+            if(!rotateAndSaveCheckpoint()){
+                training.set(false);
+                MiniAiTrainingCoordinator.error(this,8,bestPercent,0,beforeAcc,
+                        "Checkpoint pre-chunk non disponibile.");
+                return false;
+            }
+
+            JSONObject after=new JSONObject(nativeGoal9TrainChunk(20));
+            double validation=after.optDouble("validation_accuracy",0.0);
+            int goalStep=after.optInt("goal9_step",0);
+            if(validation+0.20<beforeAcc){
+                nativeLoadCheckpoint(currentCheckpoint().getAbsolutePath());
+                training.set(false);
+                MiniAiTrainingCoordinator.error(this,8,bestPercent,goalStep,validation,
+                        "Regressione rilevata: rollback automatico.");
+                return false;
+            }
+            if(!rotateAndSaveCheckpoint()){
+                nativeLoadCheckpoint(currentCheckpoint().getAbsolutePath());
+                training.set(false);
+                return false;
+            }
+
+            bestPercent=Math.max(bestPercent,goal9PercentFromValidation(validation));
+            String ev=String.format(Locale.ITALY,
+                    "Validation autocontrollo %.1f%% · step obiettivo %d",
+                    validation*100.0,goalStep);
+            MiniAiTrainingCoordinator.progress(this,8,bestPercent,goalStep,validation,ev,
+                    "Sta imparando quale controllo indipendente applicare alla propria risposta.");
+            EvolutionHistory.recordMiniAi(this,foundationStep,goalStep,bestPercent,memoryPercent,
+                    MiniAiGoals.totalPercent(this),"Mini-AI 9 · "+bestPercent+"%",
+                    "Controllo e correzione del risultato.");
+            getSharedPreferences("motorai_evolution",MODE_PRIVATE).edit()
+                    .putString("last_progress","Mini-AI 9/10 · "+bestPercent+"% · step obiettivo "+goalStep).apply();
+
+            final int shown=bestPercent,shownStep=goalStep;
+            ui(()->{
+                state.setText("Stato: TRAINING REALE · Obiettivo 9/10 · "+shown+"%");
+                updateActiveGoalUi(8,shown,shownStep,"training in corso");
+                refreshEvolutionChart();
+            });
+
+            stablePasses=validation>=0.90?stablePasses+1:0;
+            if(stablePasses>=4){
+                MiniAiTrainingCoordinator.testing(this,8,bestPercent,goalStep,validation,
+                        "TEST finale separato in corso.");
+                JSONObject fin=new JSONObject(nativeGoal9FinalTest());
+                double test=fin.optDouble("test_accuracy",0.0);
+                if(test>=0.90){
+                    String fev=String.format(Locale.ITALY,
+                            "TEST autocontrollo superato: %.1f%% · step %d",
+                            test*100.0,goalStep);
+                    MiniAiTrainingCoordinator.completed(this,8,goalStep,test,fev);
+                    rotateAndSaveCheckpoint();
+                    EvolutionHistory.recordMiniAi(this,foundationStep,goalStep,100.0,memoryPercent,
+                            MiniAiGoals.totalPercent(this),"Mini-AI 9 completato",
+                            "TEST superato: verifica e corregge il risultato con un controllo indipendente.");
+                    getSharedPreferences("motorai_evolution",MODE_PRIVATE).edit()
+                            .putString("last_progress",String.format(Locale.ITALY,
+                                    "Mini-AI 9/10 completato · TEST %.1f%%",test*100.0)).apply();
+                    ui(()->{
+                        state.setText("Stato: ✅ Obiettivo Mini-AI 9/10 completato");
+                        updateActiveGoalUi(9,MiniAiGoals.percent(this,9),0,
+                                "passaggio automatico al 10/10");
+                        refreshEvolutionChart();
+                    });
+                    forceDiagnosticSnapshot(new JSONObject(nativeEvaluate()),"miniai_goal9_completed");
+                    return true;
+                }
+                stablePasses=0;
+            }
+
+            if(goalStep>=2500){
+                training.set(false);
+                MiniAiTrainingCoordinator.paused(this,8,bestPercent,goalStep,validation,
+                        "Limite di sicurezza raggiunto.");
+                return false;
+            }
+        }
+        return false;
+    }
+
     private void stopTraining(String why) {
         training.set(false);
         nativeRequestPause();
@@ -1902,7 +2024,7 @@ public class MainActivity extends Activity {
             Guard g = readGuard();
 
             StringBuilder b = new StringBuilder();
-            b.append("MotorAI Seed 019\n");
+            b.append("MotorAI Seed 020\n");
             b.append("Snapshot: ").append(diagnosticsTimestamp()).append("\n");
             b.append("Motivo: ").append(reason).append("\n");
             b.append("Livello: L").append(level)
