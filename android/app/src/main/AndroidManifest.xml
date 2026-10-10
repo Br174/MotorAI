@@ -3,7 +3,7 @@
     <uses-permission android:name="android.permission.RECEIVE_BOOT_COMPLETED" />
     <application
         android:allowBackup="true"
-        android:label="MotorAI Seed 020"
+        android:label="MotorAI Seed 021"
         android:theme="@android:style/Theme.Material.Light.NoActionBar">
         <service
             android:name=".MotorAIBackgroundJobService"
