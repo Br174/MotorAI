@@ -462,6 +462,34 @@ Java_it_motorai_seed_MainActivity_nativeGoal8Plan(JNIEnv* env,jclass,jstring tex
     std::lock_guard<std::mutex>g(g_engine_call_mu);return js(env,g_engine.planGoal8(toString(env,text)));
 }
 
+
+extern "C" JNIEXPORT jstring JNICALL
+Java_it_motorai_seed_MainActivity_nativeGoal9Evaluate(JNIEnv* env,jclass){
+    std::lock_guard<std::mutex>g(g_engine_call_mu);auto tr=g_engine.evaluateGoal9Train(),va=g_engine.evaluateGoal9Validation();
+    return js(env,"{\"goal9_step\":"+std::to_string(g_engine.goal9Step())+",\"goal9_parameters\":"+std::to_string(g_engine.goal9ParameterCount())+
+        ",\"train_loss\":"+std::to_string(tr.loss)+",\"train_accuracy\":"+std::to_string(tr.answer_accuracy)+
+        ",\"validation_loss\":"+std::to_string(va.loss)+",\"validation_accuracy\":"+std::to_string(va.answer_accuracy)+"}");
+}
+extern "C" JNIEXPORT jstring JNICALL
+Java_it_motorai_seed_MainActivity_nativeGoal9TrainChunk(JNIEnv* env,jclass,jint steps){
+    std::lock_guard<std::mutex>g(g_engine_call_mu);auto r=g_engine.trainGoal9(static_cast<int>(steps),24,0.08f);
+    return js(env,"{\"steps_completed\":"+std::to_string(r.steps_completed)+",\"goal9_step\":"+std::to_string(g_engine.goal9Step())+
+        ",\"elapsed_seconds\":"+std::to_string(r.elapsed_seconds)+",\"train_loss\":"+std::to_string(r.train.loss)+
+        ",\"train_accuracy\":"+std::to_string(r.train.answer_accuracy)+",\"validation_loss\":"+std::to_string(r.validation.loss)+
+        ",\"validation_accuracy\":"+std::to_string(r.validation.answer_accuracy)+"}");
+}
+extern "C" JNIEXPORT jstring JNICALL
+Java_it_motorai_seed_MainActivity_nativeGoal9FinalTest(JNIEnv* env,jclass){
+    std::lock_guard<std::mutex>g(g_engine_call_mu);auto te=g_engine.evaluateGoal9Test();
+    return js(env,"{\"goal9_step\":"+std::to_string(g_engine.goal9Step())+",\"test_loss\":"+std::to_string(te.loss)+
+        ",\"test_accuracy\":"+std::to_string(te.answer_accuracy)+"}");
+}
+extern "C" JNIEXPORT jstring JNICALL
+Java_it_motorai_seed_MainActivity_nativeGoal9Review(JNIEnv* env,jclass,jstring request,jstring draft){
+    std::lock_guard<std::mutex>g(g_engine_call_mu);
+    return js(env,g_engine.reviewGoal9(toString(env,request),toString(env,draft)));
+}
+
 extern "C" JNIEXPORT void JNICALL
 Java_it_motorai_seed_MainActivity_nativeSetCurriculum(JNIEnv*, jclass, jint level) {
     std::lock_guard<std::mutex> g(g_engine_call_mu);
