@@ -6,9 +6,7 @@
 
 static bool expect(motorai::Engine& e,const std::string& text,const std::string& decision){
     std::string j=e.classifyGoal5(text);
-    bool ok=j.find("\"decision\":\""+decision+"\"")!=std::string::npos;
-    if(!ok) std::cerr<<"EXPECT FAIL text=["<<text<<"] wanted="<<decision<<" got="<<j<<"\n";
-    return ok;
+    return j.find("\"decision\":\""+decision+"\"")!=std::string::npos;
 }
 
 static bool run_one(unsigned seed){
