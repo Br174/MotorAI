@@ -180,8 +180,21 @@ public class ChatActivity extends Activity {
                 int goal5 = MiniAiGoals.percent(this,4);
                 int goal6 = MiniAiGoals.percent(this,5);
                 int goal7 = MiniAiGoals.percent(this,6);
+                int goal8 = MiniAiGoals.percent(this,7);
 
-                if (goal7 >= 100) {
+                if (goal8 >= 100) {
+                    JSONObject plan = new JSONObject(MainActivity.nativeGoal8Plan(q));
+                    if ("sequence".equals(plan.optString("mode","single"))
+                            && plan.optDouble("confidence",0.0) >= 0.60) {
+                        String first = plan.optString("first","");
+                        String second = plan.optString("second","");
+                        String r1 = executePlannedStep(first);
+                        String r2 = executePlannedStep(second);
+                        reply = "Passo 1 — " + r1 + "\n\nPasso 2 — " + r2;
+                    } else {
+                        reply = routedToolReply(q, intent, goal3, goal4, goal5, goal6);
+                    }
+                } else if (goal7 >= 100) {
                     reply = routedToolReply(q, intent, goal3, goal4, goal5, goal6);
                 } else if (goal5 >= 100) {
                     JSONObject certainty = new JSONObject(MainActivity.nativeGoal5Classify(q));
@@ -216,6 +229,14 @@ public class ChatActivity extends Activity {
             final String r=reply;
             runOnUiThread(() -> addAssistant(r));
         },"motorai-chat").start();
+    }
+
+    private String executePlannedStep(String q) throws Exception {
+        JSONObject classified = new JSONObject(MainActivity.nativeGoal1Classify(q));
+        String intent = classified.optString("intent","sconosciuto");
+        return routedToolReply(q, intent,
+                MiniAiGoals.percent(this,2), MiniAiGoals.percent(this,3),
+                MiniAiGoals.percent(this,4), MiniAiGoals.percent(this,5));
     }
 
     private String routedToolReply(String q, String intent, int goal3, int goal4,

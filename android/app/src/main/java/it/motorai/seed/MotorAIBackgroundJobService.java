@@ -214,6 +214,8 @@ public class MotorAIBackgroundJobService extends JobService {
                     continuePath = runGoal6Chunk(runtime);
                 } else if (active == 6) {
                     continuePath = runGoal7Chunk(runtime);
+                } else if (active == 7) {
+                    continuePath = runGoal8Chunk(runtime);
                 } else {
                     MiniAiTrainingCoordinator.paused(this, active,
                             MiniAiGoals.percent(this, active), 0, 0.0,
@@ -874,6 +876,31 @@ public class MotorAIBackgroundJobService extends JobService {
         }
         if(goalStep>=2500){MiniAiTrainingCoordinator.paused(this,6,best,goalStep,validation,"Limite di sicurezza raggiunto.");return false;}
         sendCurrentTelemetry("background_training_miniai_goal7");return true;
+    }
+
+    private int goal8Percent(double accuracy){final double chance=0.50,target=0.90;if(!Double.isFinite(accuracy)||accuracy<=chance)return 0;
+        return Math.max(0,Math.min(99,(int)Math.round(((accuracy-chance)/(target-chance))*99.0)));}
+
+    private boolean runGoal8Chunk(SharedPreferences runtime)throws Exception{
+        JSONObject before=new JSONObject(MainActivity.nativeGoal8Evaluate());double beforeAcc=before.optDouble("validation_accuracy",0);
+        int current=MiniAiGoals.percent(this,7);if(!rotateAndSave())return false;
+        JSONObject after=new JSONObject(MainActivity.nativeGoal8TrainChunk(20));double validation=after.optDouble("validation_accuracy",0);int step=after.optInt("goal8_step",0);
+        if(validation+0.20<beforeAcc){MainActivity.nativeLoadCheckpoint(checkpoint("current").getAbsolutePath());runtime.edit().putInt("goal8_stable_passes",0).apply();return false;}
+        if(!rotateAndSave()){MainActivity.nativeLoadCheckpoint(checkpoint("current").getAbsolutePath());return false;}
+        int best=Math.max(current,goal8Percent(validation));String ev=String.format(Locale.ITALY,"Validation pianificazione %.1f%% · step obiettivo %d",validation*100.0,step);
+        MiniAiTrainingCoordinator.progress(this,7,best,step,validation,ev,"Sta imparando a riconoscere ed eseguire un piano a due azioni.");
+        JSONObject foundation=new JSONObject(MainActivity.nativeEvaluate());double memory=min(retentions(foundation))*100.0;int foundationStep=foundation.optInt("step",3100);
+        EvolutionHistory.recordMiniAi(this,foundationStep,step,best,memory,MiniAiGoals.totalPercent(this),"Mini-AI 8 · "+best+"%","Pianificazione ed esecuzione sequenziale.");
+        appendProgress("Mini-AI 8/10 · "+best+"% · step obiettivo "+step);
+        int stable=validation>=0.90?runtime.getInt("goal8_stable_passes",0)+1:0;runtime.edit().putInt("goal8_stable_passes",stable).apply();
+        if(stable>=4){MiniAiTrainingCoordinator.testing(this,7,best,step,validation,"TEST finale separato in corso.");JSONObject fin=new JSONObject(MainActivity.nativeGoal8FinalTest());
+            double test=fin.optDouble("test_accuracy",0);if(test>=0.90){String fev=String.format(Locale.ITALY,"TEST pianificazione superato: %.1f%% · step %d",test*100.0,step);
+                MiniAiTrainingCoordinator.completed(this,7,step,test,fev);rotateAndSave();EvolutionHistory.recordMiniAi(this,foundationStep,step,100,memory,MiniAiGoals.totalPercent(this),
+                        "Mini-AI 8 completato","TEST superato: pianifica due azioni e le esegue in ordine.");
+                runtime.edit().putInt("goal8_stable_passes",0).apply();appendProgress("Mini-AI 8/10 completato · passo automatico al 9/10");sendCurrentTelemetry("background_miniai_goal8_completed");return true;}
+            runtime.edit().putInt("goal8_stable_passes",0).apply();}
+        if(step>=2500){MiniAiTrainingCoordinator.paused(this,7,best,step,validation,"Limite di sicurezza raggiunto.");return false;}
+        sendCurrentTelemetry("background_training_miniai_goal8");return true;
     }
 
     private boolean runLevel5Chunk(SharedPreferences runtime, SharedPreferences evo) throws Exception {
