@@ -179,8 +179,11 @@ public class ChatActivity extends Activity {
                 int goal4 = MiniAiGoals.percent(this,3);
                 int goal5 = MiniAiGoals.percent(this,4);
                 int goal6 = MiniAiGoals.percent(this,5);
+                int goal7 = MiniAiGoals.percent(this,6);
 
-                if (goal5 >= 100) {
+                if (goal7 >= 100) {
+                    reply = routedToolReply(q, intent, goal3, goal4, goal5, goal6);
+                } else if (goal5 >= 100) {
                     JSONObject certainty = new JSONObject(MainActivity.nativeGoal5Classify(q));
                     String decision = certainty.optString("decision", "local_known");
                     double certaintyConfidence = certainty.optDouble("confidence", 0.0);
@@ -213,6 +216,46 @@ public class ChatActivity extends Activity {
             final String r=reply;
             runOnUiThread(() -> addAssistant(r));
         },"motorai-chat").start();
+    }
+
+    private String routedToolReply(String q, String intent, int goal3, int goal4,
+                                   int goal5, int goal6) throws Exception {
+        JSONObject route = new JSONObject(MainActivity.nativeGoal7Route(q));
+        String tool = route.optString("tool", "chat");
+        double confidence = route.optDouble("confidence", 0.0);
+
+        if (confidence < 0.55) {
+            if (goal5 >= 100) {
+                JSONObject certainty = new JSONObject(MainActivity.nativeGoal5Classify(q));
+                if ("verify".equals(certainty.optString("decision","local_known"))
+                        && certainty.optDouble("confidence",0.0) >= 0.60 && goal6 >= 100) {
+                    return verifiedSearchReply(q);
+                }
+            }
+            return localCapabilityReply(q, intent, goal3, goal4);
+        }
+
+        if ("memory".equals(tool)) return memoryOrLearnedReply(q, intent, goal3);
+
+        if ("calculator".equals(tool)) {
+            if (goal4 >= 100) {
+                JSONObject reasoning = new JSONObject(MainActivity.nativeGoal4Solve(q));
+                if (reasoning.optBoolean("valid",false)
+                        && reasoning.optDouble("confidence",0.0) >= 0.60) {
+                    return goal4Reply(reasoning);
+                }
+            }
+            MiniAiCalculator.Result calc = MiniAiCalculator.solve(q);
+            if (calc.ok) return calc.expression + " = " + MiniAiCalculator.format(calc.value) + ".";
+            return "Ho scelto lo strumento di calcolo, ma non sono riuscita a leggere i numeri o l'operazione.";
+        }
+
+        if ("search".equals(tool)) {
+            if (goal6 >= 100) return verifiedSearchReply(q);
+            return "So che qui serve una ricerca, ma il modulo di ricerca non è ancora pronto.";
+        }
+
+        return learnedGoal2Reply(q, intent);
     }
 
     private String verifiedSearchReply(String q) throws Exception {
