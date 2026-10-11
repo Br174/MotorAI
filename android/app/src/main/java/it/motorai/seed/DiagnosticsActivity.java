@@ -21,6 +21,7 @@ public class DiagnosticsActivity extends Activity {
     private TextView goal1Trial;
     private TextView candidateCertification;
     private TextView promotionOutcome;
+    private TextView generalizationReport;
 
     private TextView text(String value, int sp, boolean bold) {
         TextView v = new TextView(this);
@@ -77,6 +78,12 @@ public class DiagnosticsActivity extends Activity {
         root.addView(promotionOutcome);
         Button promote=button("🛡️ Promuovi candidata Goal 10 (protetto)");
         root.addView(promote);
+
+        root.addView(text("🧭 Fase 2 — 20 richieste nuove (sola lettura)",18,true));
+        generalizationReport=text("La Fase 2 non è stata ancora misurata. Pausa SOS richiesta.",14,false);
+        root.addView(generalizationReport);
+        Button probe20=button("🧪 Esegui 20 prove nuove (senza allenamento)");
+        root.addView(probe20);
 
         root.addView(text("⚠️ Problemi rilevati", 18, true));
         failures = text("Nessun problema registrato.", 14, false);
@@ -150,8 +157,22 @@ public class DiagnosticsActivity extends Activity {
                     });
                 },"Goal10-Guarded-Promotion").start();
             }).show());
+        probe20.setOnClickListener(v -> {
+            probe20.setEnabled(false);
+            generalizationReport.setText("Sondaggio delle 20 richieste in corso…");
+            new Thread(() -> {
+                String output;
+                try {output=MotorAIGeneralizationProbe.run(this);}
+                catch(Throwable e){output="⛔ Prova interrotta: "+e.getClass().getSimpleName();}
+                final String shown=output;
+                runOnUiThread(() -> {
+                    generalizationReport.setText(shown);
+                    probe20.setEnabled(true);
+                });
+            },"MotorAI-20-Unseen-ReadOnly").start();
+        });
         copy.setOnClickListener(v -> {
-            String all = report.getText().toString() + "\n\n🎯 GOAL 10\n" + goal10Details.getText() + "\n\n🔬 PROVE REALI NON INVASIVE\n" + goal10Inspector.getText() + "\n\n🧪 PROVA GOAL1 ISOLATA\n" + goal1Trial.getText() + "\n\n🔐 CERTIFICAZIONE CANDIDATA ISOLATA\n" + candidateCertification.getText() + "\n\n🛡️ PROMOZIONE REALE R3R8\n" + promotionOutcome.getText() + "\n\n⚠️ PROBLEMI RILEVATI\n" +
+            String all = report.getText().toString() + "\n\n🎯 GOAL 10\n" + goal10Details.getText() + "\n\n🔬 PROVE REALI NON INVASIVE\n" + goal10Inspector.getText() + "\n\n🧪 PROVA GOAL1 ISOLATA\n" + goal1Trial.getText() + "\n\n🔐 CERTIFICAZIONE CANDIDATA ISOLATA\n" + candidateCertification.getText() + "\n\n🛡️ PROMOZIONE REALE R3R8\n" + promotionOutcome.getText() + "\n\n🧭 FASE 2 · 20 PROVE NUOVE\n" + generalizationReport.getText() + "\n\n⚠️ PROBLEMI RILEVATI\n" +
                     failures.getText().toString();
             ClipboardManager cm = (ClipboardManager) getSystemService(Context.CLIPBOARD_SERVICE);
             cm.setPrimaryClip(ClipData.newPlainText("Diagnostica MotorAI", all));
