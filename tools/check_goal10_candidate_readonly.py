@@ -41,5 +41,5 @@ assert "nativeLoadCheckpoint(" not in java
 assert "MiniAiGoal10CandidateInspector.inspect(this)" in ui
 assert "candidateCertification.getText()" in ui
 assert "nativeGoal10CandidateCompare(String candidatePath)" in main
-assert "versionCode = 33" in Path("android/app/build.gradle.kts").read_text()
+assert "versionCode = 34" in Path("android/app/build.gradle.kts").read_text()
 print("PASS Goal10 shadow-candidate 10 checks, evidence alignment and complete non-mutation")
