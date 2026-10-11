@@ -17,6 +17,7 @@ public class DiagnosticsActivity extends Activity {
     private TextView report;
     private TextView failures;
     private TextView goal10Details;
+    private TextView goal10Inspector;
 
     private TextView text(String value, int sp, boolean bold) {
         TextView v = new TextView(this);
@@ -54,6 +55,11 @@ public class DiagnosticsActivity extends Activity {
         root.addView(text("🎯 Goal 10 — verifiche dettagliate", 18, true));
         goal10Details = text("Certificazione ancora da misurare.", 14, false);
         root.addView(goal10Details);
+        root.addView(text("🔬 Goal 10 — Prove reali in sola lettura", 18, true));
+        goal10Inspector = text("Tocca il pulsante per leggere le dieci risposte, senza modificare alcun dato.", 14, false);
+        root.addView(goal10Inspector);
+        Button inspect = button("🔬 Verifica Goal 10 (sola lettura)");
+        root.addView(inspect);
 
         root.addView(text("⚠️ Problemi rilevati", 18, true));
         failures = text("Nessun problema registrato.", 14, false);
@@ -67,8 +73,22 @@ public class DiagnosticsActivity extends Activity {
         root.addView(close);
 
         refresh.setOnClickListener(v -> load());
+        inspect.setOnClickListener(v -> {
+            inspect.setEnabled(false);
+            goal10Inspector.setText("Controllo senza allenamento in corso…");
+            new Thread(() -> {
+                String outcome;
+                try { outcome = MiniAiGoal10Inspector.inspect(); }
+                catch (Throwable e) { outcome = "Diagnosi interrotta: " + e.getClass().getSimpleName(); }
+                final String textResult = outcome;
+                runOnUiThread(() -> {
+                    goal10Inspector.setText(textResult);
+                    inspect.setEnabled(true);
+                });
+            }, "Goal10-ReadOnly").start();
+        });
         copy.setOnClickListener(v -> {
-            String all = report.getText().toString() + "\n\n🎯 GOAL 10\n" + goal10Details.getText() + "\n\n⚠️ PROBLEMI RILEVATI\n" +
+            String all = report.getText().toString() + "\n\n🎯 GOAL 10\n" + goal10Details.getText() + "\n\n🔬 PROVE REALI NON INVASIVE\n" + goal10Inspector.getText() + "\n\n⚠️ PROBLEMI RILEVATI\n" +
                     failures.getText().toString();
             ClipboardManager cm = (ClipboardManager) getSystemService(Context.CLIPBOARD_SERVICE);
             cm.setPrimaryClip(ClipData.newPlainText("Diagnostica MotorAI", all));

@@ -25,6 +25,11 @@ jobs:
       - name: Checkout
         uses: actions/checkout@v6
 
+      - name: Verify Goal10 non-invasive diagnostics
+        id: goal10_readonly_gate
+        run: |
+          python3 tools/check_goal10_readonly.py
+
       - name: Verify manual-training and pause menu wiring
         id: manual_menu_gate
         run: |
@@ -66,7 +71,7 @@ jobs:
           grep -q 'ACTION_OPEN_DOCUMENT' android/app/src/main/java/it/motorai/seed/MotorAIRecoveryActivity.java
           grep -q 'MOTORAI_RECOVERY_ZIP_V1' android/app/src/main/java/it/motorai/seed/MotorAIRecoveryStore.java
           grep -q 'r3-pre-restore-protected' android/app/src/main/java/it/motorai/seed/MotorAIRecoveryStore.java
-          grep -q 'versionCode = 29' android/app/build.gradle.kts
+          grep -q 'versionCode = 30' android/app/build.gradle.kts
 
       - name: Verify all ten Goal10 integration checks after full training and checkpoint reload
         id: goal10_integration_gate
@@ -268,10 +273,10 @@ jobs:
         run: gradle --no-daemon --stacktrace assembleDebug
 
       - name: Upload MotorAI APK
-        if: steps.native_gate.outcome == 'success' && steps.goal1_gate.outcome == 'success' && steps.goal2_gate.outcome == 'success' && steps.goal3_gate.outcome == 'success' && steps.goal3_recovery_gate.outcome == 'success' && steps.goal4_gate.outcome == 'success' && steps.goal5_gate.outcome == 'success' && steps.goal6_gate.outcome == 'success' && steps.goal7_gate.outcome == 'success' && steps.goal8_gate.outcome == 'success' && steps.goal9_gate.outcome == 'success' && steps.goal10_gate.outcome == 'success' && steps.goal10_integration_gate.outcome == 'success' && steps.emergency_gate.outcome == 'success' && steps.checkpoint_header_gate.outcome == 'success' && steps.isolated_checkpoint_gate.outcome == 'success' && steps.manual_menu_gate.outcome == 'success' && steps.android_build.outcome == 'success'
+        if: steps.native_gate.outcome == 'success' && steps.goal1_gate.outcome == 'success' && steps.goal2_gate.outcome == 'success' && steps.goal3_gate.outcome == 'success' && steps.goal3_recovery_gate.outcome == 'success' && steps.goal4_gate.outcome == 'success' && steps.goal5_gate.outcome == 'success' && steps.goal6_gate.outcome == 'success' && steps.goal7_gate.outcome == 'success' && steps.goal8_gate.outcome == 'success' && steps.goal9_gate.outcome == 'success' && steps.goal10_gate.outcome == 'success' && steps.goal10_integration_gate.outcome == 'success' && steps.emergency_gate.outcome == 'success' && steps.checkpoint_header_gate.outcome == 'success' && steps.isolated_checkpoint_gate.outcome == 'success' && steps.manual_menu_gate.outcome == 'success' && steps.goal10_readonly_gate.outcome == 'success' && steps.android_build.outcome == 'success'
         uses: actions/upload-artifact@v6
         with:
-          name: MotorAI-Seed021R3R3-debug
+          name: MotorAI-Seed021R3R4-debug
           path: android/app/build/outputs/apk/debug/*.apk
           if-no-files-found: error
           retention-days: 14
@@ -296,6 +301,7 @@ jobs:
           echo "Legacy checkpoint header: ${{ steps.checkpoint_header_gate.outcome }}"
           echo "Isolated native checkpoint: ${{ steps.isolated_checkpoint_gate.outcome }}"
           echo "Manual/pause menu wiring: ${{ steps.manual_menu_gate.outcome }}"
+          echo "Goal10 non-invasive diagnostics: ${{ steps.goal10_readonly_gate.outcome }}"
           echo "Android build: ${{ steps.android_build.outcome }}"
           test "${{ steps.native_gate.outcome }}" = "success"
           test "${{ steps.goal1_gate.outcome }}" = "success"
@@ -314,6 +320,7 @@ jobs:
           test "${{ steps.checkpoint_header_gate.outcome }}" = "success"
           test "${{ steps.isolated_checkpoint_gate.outcome }}" = "success"
           test "${{ steps.manual_menu_gate.outcome }}" = "success"
+          test "${{ steps.goal10_readonly_gate.outcome }}" = "success"
           test "${{ steps.android_build.outcome }}" = "success"
 
 # Seed004 final validation trigger
