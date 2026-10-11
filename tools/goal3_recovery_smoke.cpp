@@ -8,12 +8,13 @@
 // Simulate the Android chunk-save / severe-regression rollback / adaptive-retry
 // path using real native Goal3 training and exact checkpoint serialization.
 static bool check(unsigned seed) {
-    const float rates[]={0.04f,0.02f,0.01f,0.005f,0.0025f};
+    const float rates[]={0.08f,0.04f,0.02f,0.01f,0.005f,0.0025f};
     motorai::Engine e(seed);
     const int foundationStep=e.globalStep();
     const int foundationLevel=e.curriculumLevel();
     const std::string dir="/tmp/motorai_goal3_adaptive_"+std::to_string(seed);
-    int retries=0, stable=0, chunks=0;
+    int retries=0, stable=0, safeChunks=0, chunks=0;
+    bool simulatedStep60Reject=false, resumedAfterRollback=false;
     std::filesystem::remove_all(dir);
     while (e.goal3Step()<2500 && stable<4 && retries<5) {
         float before=e.evaluateGoal3Validation().answer_accuracy;
@@ -21,18 +22,26 @@ static bool check(unsigned seed) {
         auto r=e.trainGoal3(20,24,rates[retries]);
         float after=r.validation.answer_accuracy;
         ++chunks;
-        if(!std::isfinite(after) || after+0.20f<before) {
+        // One simulated rejected chunk at the same step seen on Android.
+        // The independent final test gate still decides acceptance.
+        bool rejectAt60=!simulatedStep60Reject && e.goal3Step()==60;
+        if(rejectAt60) simulatedStep60Reject=true;
+        if(!std::isfinite(after) || after+0.20f<before || rejectAt60) {
             if(!e.loadCheckpoint(dir)) return false;
             ++retries;
+            safeChunks=0;
             stable=0;
+            resumedAfterRollback=true;
             continue;
         }
+        if(retries>0 && ++safeChunks>=4) { retries=0; safeChunks=0; }
         stable=after>=0.90f ? stable+1 : 0;
     }
     auto validation=e.evaluateGoal3Validation();
     auto test=e.evaluateGoal3Test();
     bool ok=stable>=4 && validation.answer_accuracy>=0.90f
             && test.answer_accuracy>=0.90f && retries<5
+            && simulatedStep60Reject && resumedAfterRollback
             && e.globalStep()==foundationStep && e.curriculumLevel()==foundationLevel;
     if(ok) {
         if(!e.saveCheckpoint(dir)) ok=false;
