@@ -53,9 +53,9 @@ assert "tenChecks(" in java
 assert "nativeGoal10CandidateCompare" in java
 assert "nativeProbeCheckpoint" in java
 assert "phase2ShadowReport.getText()" in ui
-assert "MotorAIPhase2ShadowTrial.runR3R11(this)" in ui
+assert "MotorAIPhase2ShadowTrial.runR3R12(this)" in ui
 assert "public static String run(Context c)" in java
 assert "nativePhase2ShadowExperiment(String sourcePath, String candidatePath)" in main
-assert "versionCode = 37" in gradle and "0.21.14-seed021r3r11" in gradle
+assert "versionCode = 38" in gradle and "0.21.15-seed021r3r12" in gradle
 assert "Phase2 isolated Goal1 Goal7 safety contract R3R10" in workflow
 print("PASS R3R10: shadow train-only augmentation, 16 new holdout, locked SOS/current, no native live training/promotion")
