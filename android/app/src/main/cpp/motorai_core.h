@@ -122,6 +122,8 @@ public:
     // R3R10: augment TRAIN only, explicitly invoked on an isolated Engine copy.
     // Never called from the live model; held-out validation and test are unchanged.
     void augmentPhase2TrainOnly();
+    // R3R12: only shadow Goal7 train gets balanced rehearsal; never update val/test.
+    void augmentPhase2R3R12Goal7BalancedTrainOnly();
     // R3R11: copy only one trained lane from an isolated Engine.
     // Caller must never use the global live Engine as destination.
     void adoptIsolatedGoal1(const Engine& source);
