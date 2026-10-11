@@ -238,9 +238,10 @@ Java_it_motorai_seed_MainActivity_nativeGoal3Evaluate(JNIEnv* env, jclass) {
 }
 
 extern "C" JNIEXPORT jstring JNICALL
-Java_it_motorai_seed_MainActivity_nativeGoal3TrainChunk(JNIEnv* env, jclass, jint steps) {
+Java_it_motorai_seed_MainActivity_nativeGoal3TrainChunk(JNIEnv* env, jclass, jint steps, jfloat learningRate) {
     std::lock_guard<std::mutex> g(g_engine_call_mu);
-    auto r=g_engine.trainGoal3(static_cast<int>(steps),24,0.08f);
+    const float rate=(learningRate>=0.0025f && learningRate<=0.08f) ? learningRate : 0.0025f;
+    auto r=g_engine.trainGoal3(static_cast<int>(steps),24,rate);
     std::string s="{\"steps_completed\":"+std::to_string(r.steps_completed)+
         ",\"goal3_step\":"+std::to_string(g_engine.goal3Step())+
         ",\"elapsed_seconds\":"+std::to_string(r.elapsed_seconds)+

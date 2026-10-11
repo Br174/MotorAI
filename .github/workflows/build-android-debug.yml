@@ -61,6 +61,15 @@ jobs:
             -o /tmp/motorai_goal3_smoke
           /tmp/motorai_goal3_smoke
 
+      - name: Verify Goal3 regression recovery without bypassing tests
+        id: goal3_recovery_gate
+        continue-on-error: true
+        run: |
+          g++ -std=c++20 -O2 -pthread -Iandroid/app/src/main/cpp \\
+            tools/goal3_recovery_smoke.cpp android/app/src/main/cpp/motorai_core.cpp \\
+            -o /tmp/motorai_goal3_recovery_smoke
+          /tmp/motorai_goal3_recovery_smoke
+
       - name: Verify Mini-AI Goal4 reasoning benchmark
         id: goal4_gate
         continue-on-error: true
@@ -207,10 +216,10 @@ jobs:
         run: gradle --no-daemon --stacktrace assembleDebug
 
       - name: Upload MotorAI APK
-        if: steps.native_gate.outcome == 'success' && steps.goal1_gate.outcome == 'success' && steps.goal2_gate.outcome == 'success' && steps.goal3_gate.outcome == 'success' && steps.goal4_gate.outcome == 'success' && steps.goal5_gate.outcome == 'success' && steps.goal6_gate.outcome == 'success' && steps.goal7_gate.outcome == 'success' && steps.goal8_gate.outcome == 'success' && steps.goal9_gate.outcome == 'success' && steps.goal10_gate.outcome == 'success' && steps.android_build.outcome == 'success'
+        if: steps.native_gate.outcome == 'success' && steps.goal1_gate.outcome == 'success' && steps.goal2_gate.outcome == 'success' && steps.goal3_gate.outcome == 'success' && steps.goal3_recovery_gate.outcome == 'success' && steps.goal4_gate.outcome == 'success' && steps.goal5_gate.outcome == 'success' && steps.goal6_gate.outcome == 'success' && steps.goal7_gate.outcome == 'success' && steps.goal8_gate.outcome == 'success' && steps.goal9_gate.outcome == 'success' && steps.goal10_gate.outcome == 'success' && steps.android_build.outcome == 'success'
         uses: actions/upload-artifact@v6
         with:
-          name: MotorAI-Seed021-debug
+          name: MotorAI-Seed021R1-debug
           path: android/app/build/outputs/apk/debug/*.apk
           if-no-files-found: error
           retention-days: 14
@@ -222,6 +231,7 @@ jobs:
           echo "Mini-AI Goal1: ${{ steps.goal1_gate.outcome }}"
           echo "Mini-AI Goal2: ${{ steps.goal2_gate.outcome }}"
           echo "Mini-AI Goal3: ${{ steps.goal3_gate.outcome }}"
+          echo "Goal3 recovery gate: ${{ steps.goal3_recovery_gate.outcome }}"
           echo "Mini-AI Goal4: ${{ steps.goal4_gate.outcome }}"
           echo "Mini-AI Goal5: ${{ steps.goal5_gate.outcome }}"
           echo "Mini-AI Goal6: ${{ steps.goal6_gate.outcome }}"
@@ -234,6 +244,7 @@ jobs:
           test "${{ steps.goal1_gate.outcome }}" = "success"
           test "${{ steps.goal2_gate.outcome }}" = "success"
           test "${{ steps.goal3_gate.outcome }}" = "success"
+          test "${{ steps.goal3_recovery_gate.outcome }}" = "success"
           test "${{ steps.goal4_gate.outcome }}" = "success"
           test "${{ steps.goal5_gate.outcome }}" = "success"
           test "${{ steps.goal6_gate.outcome }}" = "success"

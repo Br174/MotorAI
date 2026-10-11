@@ -57,7 +57,7 @@ public class MainActivity extends Activity {
     public static native String nativeGoal2FinalTest();
     public static native String nativeGoal2Respond(String text);
     public static native String nativeGoal3Evaluate();
-    public static native String nativeGoal3TrainChunk(int steps);
+    public static native String nativeGoal3TrainChunk(int steps, float learningRate);
     public static native String nativeGoal3FinalTest();
     public static native String nativeGoal3Classify(String text);
     public static native String nativeGoal4Evaluate();
@@ -254,7 +254,7 @@ public class MainActivity extends Activity {
         root.addView(statusCard);
 
         LinearLayout goalCard = card(Color.rgb(246, 250, 255));
-        goalCard.addView(compact("🎯 Obiettivo Mini-AI 1/10", 14, false));
+        goalCard.addView(compact("🎯 Obiettivo Mini-AI attivo", 14, false));
         goal1ProgressText = compact("Capire una richiesta normale · 0%", 20, true);
         goalCard.addView(goal1ProgressText);
         goal1ProgressBar = new ProgressBar(this, null, android.R.attr.progressBarStyleHorizontal);
@@ -1284,6 +1284,12 @@ public class MainActivity extends Activity {
 
         int stablePasses = 0;
         int bestPercent = already;
+        if (!Goal3Recovery.canTrain(this)) {
+            training.set(false);
+            MiniAiTrainingCoordinator.paused(this, 2, already, 0, 0.0,
+                    "Recupero Goal 3 esaurito: nessun riavvio automatico fino a nuova correzione.");
+            return false;
+        }
         MiniAiTrainingStatus.update(this, 2, "training", already, 0, 0.0,
                 "Training reale dell'Obiettivo 3/10 avviato.");
         state.post(() -> state.setText("Stato: Obiettivo Mini-AI 3/10 · training reale avviato"));
@@ -1308,17 +1314,29 @@ public class MainActivity extends Activity {
                 return false;
             }
 
-            JSONObject after = new JSONObject(nativeGoal3TrainChunk(20));
+            JSONObject after = new JSONObject(nativeGoal3TrainChunk(20, Goal3Recovery.learningRate(this)));
             double validation = after.optDouble("validation_accuracy", 0.0);
             int goalStep = after.optInt("goal3_step", 0);
             int measured = goal3PercentFromValidation(validation);
 
             if (validation + 0.20 < beforeAcc) {
-                nativeLoadCheckpoint(currentCheckpoint().getAbsolutePath());
+                boolean restored = nativeLoadCheckpoint(currentCheckpoint().getAbsolutePath());
                 training.set(false);
-                MiniAiTrainingCoordinator.error(this, 2, bestPercent, goalStep, validation,
-                        "Regressione rilevata: rollback automatico.");
-                appendDiagnosticFailure("Goal3: regressione forte rilevata · rollback");
+                if (!restored) {
+                    MiniAiTrainingCoordinator.error(this, 2, bestPercent, goalStep, validation,
+                            "Rollback non riuscito: checkpoint da verificare nel Laboratorio.");
+                    appendDiagnosticFailure("Goal3: caricamento checkpoint rollback fallito");
+                    return false;
+                }
+                int retry = Goal3Recovery.recordRegression(this);
+                String reason = "Regressione Goal 3: recupero " + retry + "/"
+                        + Goal3Recovery.MAX_RECOVERIES
+                        + (Goal3Recovery.canTrain(this)
+                           ? ". Prossimo tentativo con apprendimento più graduale."
+                           : ". Stop anti-loop: nessun altro tentativo automatico.");
+                MiniAiTrainingCoordinator.error(this, 2, bestPercent, goalStep, validation, reason);
+                appendDiagnosticFailure("Goal3: " + reason
+                        + " · qualità prima " + beforeAcc + " dopo " + validation);
                 return false;
             }
 
@@ -1365,6 +1383,7 @@ public class MainActivity extends Activity {
                             "TEST memoria separato superato: %.1f%% · step obiettivo %d",
                             test * 100.0, goalStep);
                     MiniAiTrainingCoordinator.completed(this, 2, goalStep, test, evidenceFinal);
+                    Goal3Recovery.clear(this);
                     rotateAndSaveCheckpoint();
                     EvolutionHistory.recordMiniAi(this, foundationStep, goalStep,
                             100.0, memoryPercent, MiniAiGoals.totalPercent(this),

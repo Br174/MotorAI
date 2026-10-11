@@ -443,6 +443,11 @@ public class MotorAIBackgroundJobService extends JobService {
     }
 
     private boolean runGoal3Chunk(SharedPreferences runtime) throws Exception {
+        if (!Goal3Recovery.canTrain(this)) {
+            MiniAiTrainingCoordinator.paused(this, 2, MiniAiGoals.percent(this, 2), 0, 0.0,
+                    "Recupero Goal 3 esaurito: stop anti-loop, checkpoint preservato.");
+            return false;
+        }
         JSONObject before = new JSONObject(MainActivity.nativeGoal3Evaluate());
         double beforeAcc = before.optDouble("validation_accuracy", 0.0);
         int currentPercent = MiniAiGoals.percent(this, 2);
@@ -454,16 +459,28 @@ public class MotorAIBackgroundJobService extends JobService {
             return false;
         }
 
-        JSONObject after = new JSONObject(MainActivity.nativeGoal3TrainChunk(20));
+        JSONObject after = new JSONObject(MainActivity.nativeGoal3TrainChunk(20, Goal3Recovery.learningRate(this)));
         double validation = after.optDouble("validation_accuracy", 0.0);
         int goalStep = after.optInt("goal3_step", 0);
 
         if (validation + 0.20 < beforeAcc) {
-            MainActivity.nativeLoadCheckpoint(checkpoint("current").getAbsolutePath());
+            boolean restored = MainActivity.nativeLoadCheckpoint(checkpoint("current").getAbsolutePath());
             runtime.edit().putInt("goal3_stable_passes", 0).apply();
-            MiniAiTrainingCoordinator.error(this, 2, currentPercent, goalStep, validation,
-                    "Regressione rilevata: rollback automatico.");
-            appendFailure("Background Goal3: regressione forte · rollback automatico");
+            if (!restored) {
+                MiniAiTrainingCoordinator.error(this, 2, currentPercent, goalStep, validation,
+                        "Checkpoint rollback non caricabile.");
+                appendFailure("Background Goal3: checkpoint rollback non caricabile");
+                return false;
+            }
+            int retry = Goal3Recovery.recordRegression(this);
+            String reason = "Regressione Goal 3: recupero " + retry + "/"
+                    + Goal3Recovery.MAX_RECOVERIES
+                    + (Goal3Recovery.canTrain(this)
+                       ? ". Apprendimento più graduale al prossimo avvio."
+                       : ". Stop anti-loop, checkpoint preservato.");
+            MiniAiTrainingCoordinator.error(this, 2, currentPercent, goalStep, validation, reason);
+            appendFailure("Background Goal3: " + reason
+                    + " · qualità prima " + beforeAcc + " dopo " + validation);
             sendCurrentTelemetry("background_goal3_rollback_regression");
             return false;
         }
@@ -508,6 +525,7 @@ public class MotorAIBackgroundJobService extends JobService {
                         "TEST memoria separato superato: %.1f%% · step obiettivo %d",
                         test * 100.0, goalStep);
                 MiniAiTrainingCoordinator.completed(this, 2, goalStep, test, finalEvidence);
+                Goal3Recovery.clear(this);
                 rotateAndSave();
                 EvolutionHistory.recordMiniAi(this, foundationStep, goalStep,
                         100.0, memory, MiniAiGoals.totalPercent(this),

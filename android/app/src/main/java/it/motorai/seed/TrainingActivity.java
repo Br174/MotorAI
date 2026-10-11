@@ -177,6 +177,11 @@ public class TrainingActivity extends Activity {
         double validation=MiniAiTrainingStatus.validation(this);
         String msg=MiniAiTrainingStatus.message(this);
         long updated=MiniAiTrainingStatus.updatedMs(this);
+        if ("training".equals(rawState)
+                && (updated <= 0 || System.currentTimeMillis() - updated > 30_000L)) {
+            rawState = "waiting";
+            msg = "Nessun nuovo step negli ultimi 30 secondi: training in attesa di verifica.";
+        }
 
         String icon;
         if("training".equals(rawState)) icon="🟢";
