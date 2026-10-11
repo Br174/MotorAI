@@ -14,6 +14,6 @@ assert s.count('if (!training.compareAndSet(false, true)) return;') == 2
 assert 'if (MotorAIRecoveryMode.paused(this))' in s
 assert 'button("Riparti da pesi casuali")' in s
 g = pathlib.Path("android/app/build.gradle.kts").read_text()
-assert "versionCode = 32" in g
-assert 'versionName = "0.21.9-seed021r3r6"' in g
+assert "versionCode = 33" in g
+assert 'versionName = "0.21.10-seed021r3r7"' in g
 print("PASS: manual and pause visible, existing handler reused, dual-training guard intact")

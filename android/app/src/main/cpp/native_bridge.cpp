@@ -160,6 +160,67 @@ Java_it_motorai_seed_MainActivity_nativeGoal1ShadowTrial(JNIEnv* env, jclass,
     }catch(...){return js(env,"{\"status\":\"shadow_exception\"}");}
 }
 
+
+/** Stage C: read-only integrated Goal10 preview for saved shadow candidate.
+ * Both profiles are evaluated under the same mutex, with no train/save/load
+ * operation on g_engine, no mutation of Goal10 progress and no promotion.
+ */
+static std::string goal10RawProfile(motorai::Engine& engine) {
+    return std::string("{")
+      +"\"comprensione\":"+engine.classifyGoal1("quanto fa sette piu otto")
+      +",\"risposta\":"+engine.respondGoal2("ciao")
+      +",\"memoria\":"+engine.classifyGoal3("come mi chiamo")
+      +",\"ragionamento\":"+engine.solveGoal4("parto da 10 aggiungo 3 poi tolgo 4")
+      +",\"incertezza\":"+engine.classifyGoal5("che tempo fa oggi")
+      +",\"ricerca_wiki\":"+engine.planGoal6("chi e michelangelo")
+      +",\"ricerca_live\":"+engine.planGoal6("che temperatura c e adesso")
+      +",\"strumenti_calc\":"+engine.routeGoal7("quanto fa diciassette piu quattro")
+      +",\"strumenti_search\":"+engine.routeGoal7("chi e dante")
+      +",\"piano\":"+engine.planGoal8("quanto fa sette piu otto e poi cerca informazioni su marte")
+      +",\"autocontrollo_calcolo\":"+engine.reviewGoal9("quanto fa diciassette piu quattro","17 + 4 = 22")
+      +",\"autocontrollo_fonte\":"+engine.reviewGoal9("chi e michelangelo","Michelangelo era un artista. Fonte: Wikipedia")
+      +"}";
+}
+
+extern "C" JNIEXPORT jstring JNICALL
+Java_it_motorai_seed_MainActivity_nativeGoal10CandidateCompare(JNIEnv* env, jclass,
+                                                                jstring candidatePath) {
+    try {
+        std::lock_guard<std::mutex> guard(g_engine_call_mu);
+        const int liveStep=g_engine.globalStep();
+        const int level=g_engine.curriculumLevel();
+        const int goal1Step=g_engine.goal1Step();
+        motorai::Engine candidate(174);
+        if(!candidate.loadCheckpoint(toString(env,candidatePath)))
+            return js(env,"{\"loaded\":false,\"reason\":\"candidate_unreadable\"}");
+        if(candidate.globalStep()!=liveStep || candidate.curriculumLevel()!=level)
+            return js(env,"{\"loaded\":false,\"reason\":\"base_model_mismatch\"}");
+        if(candidate.goal1Step()<=goal1Step)
+            return js(env,"{\"loaded\":false,\"reason\":\"not_finetuned\"}");
+        const auto baseline=goal10RawProfile(g_engine);
+        const auto proposed=goal10RawProfile(candidate);
+        const auto activeGoal1Test=g_engine.evaluateGoal1Test();
+        const auto trialGoal1Test=candidate.evaluateGoal1Test();
+        const auto activeGoal1Val=g_engine.evaluateGoal1Validation();
+        const auto trialGoal1Val=candidate.evaluateGoal1Validation();
+        if(liveStep!=g_engine.globalStep() || level!=g_engine.curriculumLevel()
+           || goal1Step!=g_engine.goal1Step())
+            return js(env,"{\"loaded\":false,\"reason\":\"live_engine_changed\"}");
+        if(!std::isfinite(trialGoal1Test.answer_accuracy) ||
+           !std::isfinite(trialGoal1Val.answer_accuracy))
+            return js(env,"{\"loaded\":false,\"reason\":\"nonfinite_test\"}");
+        return js(env,std::string("{\"loaded\":true,\"active\":")+baseline+
+           ",\"candidate\":"+proposed+
+           ",\"active_goal1_test\":"+std::to_string(activeGoal1Test.answer_accuracy)+
+           ",\"candidate_goal1_test\":"+std::to_string(trialGoal1Test.answer_accuracy)+
+           ",\"active_goal1_validation\":"+std::to_string(activeGoal1Val.answer_accuracy)+
+           ",\"candidate_goal1_validation\":"+std::to_string(trialGoal1Val.answer_accuracy)+
+           ",\"live_unchanged\":true}");
+    } catch (...) {
+        return js(env,"{\"loaded\":false,\"reason\":\"candidate_probe_exception\"}");
+    }
+}
+
 extern "C" JNIEXPORT jstring JNICALL
 Java_it_motorai_seed_MainActivity_nativeStatus(JNIEnv* env, jclass) {
     std::lock_guard<std::mutex> g(g_engine_call_mu);
