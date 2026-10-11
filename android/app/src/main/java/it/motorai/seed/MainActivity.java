@@ -203,7 +203,7 @@ public class MainActivity extends Activity {
         super.onCreate(stateBundle);
         UI_ACTIVE.set(true);
         MotorAIBackgroundJobService.schedule(this);
-        setTitle("MotorAI Seed 021");
+        setTitle("MotorAI Seed 021R2");
 
         ScrollView scroll = new ScrollView(this);
         LinearLayout root = new LinearLayout(this);
@@ -217,7 +217,7 @@ public class MainActivity extends Activity {
         header.setGravity(Gravity.CENTER_VERTICAL);
         LinearLayout headerText = new LinearLayout(this);
         headerText.setOrientation(LinearLayout.VERTICAL);
-        headerText.addView(compact("🧠 MotorAI Seed 021", 26, true));
+        headerText.addView(compact("🧠 MotorAI Seed 021R2", 26, true));
         headerText.addView(compact("AI locale · Apprendimento continuo", 14, false));
         header.addView(headerText, new LinearLayout.LayoutParams(0,
                 LinearLayout.LayoutParams.WRAP_CONTENT, 1));
@@ -426,7 +426,7 @@ public class MainActivity extends Activity {
         setContentView(scroll);
 
         runAsync(() -> {
-            boolean resumed = currentCheckpoint().exists() && nativeLoadCheckpoint(currentCheckpoint().getAbsolutePath());
+            boolean resumed = currentCheckpoint().exists() && MotorAICheckpointStore.load(currentCheckpoint().getAbsolutePath());
             try {
                 int level = nativeCurriculum();
                 JSONObject trainState = new JSONObject(nativeTrainingEvaluate());
@@ -568,7 +568,7 @@ public class MainActivity extends Activity {
 
                     if (numericFailure || clearRegression || forgetL0 || forgetL1 || forgetL2 || forgetL3 || forgetL4) {
                         appendDiagnosticFailure("Regressione/dimenticanza nel training manuale · rollback automatico");
-                        nativeLoadCheckpoint(currentCheckpoint().getAbsolutePath());
+                        MotorAICheckpointStore.load(currentCheckpoint().getAbsolutePath());
                         training.set(false);
                         ui(() -> {
                             state.setText("Stato: regressione/dimenticanza rilevata · rollback automatico");
@@ -759,7 +759,7 @@ public class MainActivity extends Activity {
 
                     if (regression || forgetting) {
                         appendDiagnosticFailure("Auto-Training: regressione o dimenticanza rilevata · rollback");
-                        nativeLoadCheckpoint(currentCheckpoint().getAbsolutePath());
+                        MotorAICheckpointStore.load(currentCheckpoint().getAbsolutePath());
                         JSONObject rolled = new JSONObject(nativeTrainingEvaluate());
                         recordEvolution(rolled, "Rollback",
                                 "Regressione rilevata: MotorAI è tornata automaticamente all'ultimo checkpoint sicuro.", false);
@@ -816,7 +816,7 @@ public class MainActivity extends Activity {
                             });
                         } else {
                             if (autoBaselineCheckpoint().exists()) {
-                                nativeLoadCheckpoint(autoBaselineCheckpoint().getAbsolutePath());
+                                MotorAICheckpointStore.load(autoBaselineCheckpoint().getAbsolutePath());
                                 rotateAndSaveCheckpoint();
                             }
                             appendDiagnosticFailure("Auto-Training: TEST finale non superato · rollback alla Seed 010");
@@ -836,7 +836,7 @@ public class MainActivity extends Activity {
 
                     if (step - start >= 5000) {
                         if (autoBaselineCheckpoint().exists()) {
-                            nativeLoadCheckpoint(autoBaselineCheckpoint().getAbsolutePath());
+                            MotorAICheckpointStore.load(autoBaselineCheckpoint().getAbsolutePath());
                             rotateAndSaveCheckpoint();
                         }
                         appendDiagnosticFailure("Auto-Training: limite di sicurezza raggiunto · rollback alla Seed 010");
@@ -1058,7 +1058,7 @@ public class MainActivity extends Activity {
             int measured = goal1PercentFromValidation(validation);
 
             if (validation + 0.20 < beforeAcc) {
-                nativeLoadCheckpoint(currentCheckpoint().getAbsolutePath());
+                MotorAICheckpointStore.load(currentCheckpoint().getAbsolutePath());
                 appendDiagnosticFailure("Goal1: regressione forte rilevata · rollback");
                 training.set(false);
                 MiniAiTrainingCoordinator.error(this, 0, bestPercent, goalStep, validation,
@@ -1067,7 +1067,7 @@ public class MainActivity extends Activity {
             }
 
             if (!rotateAndSaveCheckpoint()) {
-                nativeLoadCheckpoint(currentCheckpoint().getAbsolutePath());
+                MotorAICheckpointStore.load(currentCheckpoint().getAbsolutePath());
                 appendDiagnosticFailure("Goal1: salvataggio post-chunk fallito");
                 training.set(false);
                 MiniAiTrainingCoordinator.error(this, 0, bestPercent, goalStep, validation,
@@ -1186,7 +1186,7 @@ public class MainActivity extends Activity {
             int measured = goal2PercentFromValidation(validation);
 
             if (validation + 0.15 < beforeAcc) {
-                nativeLoadCheckpoint(currentCheckpoint().getAbsolutePath());
+                MotorAICheckpointStore.load(currentCheckpoint().getAbsolutePath());
                 appendDiagnosticFailure("Goal2: regressione forte rilevata · rollback");
                 training.set(false);
                 MiniAiTrainingCoordinator.error(this, 1, bestPercent, goalStep, validation,
@@ -1195,7 +1195,7 @@ public class MainActivity extends Activity {
             }
 
             if (!rotateAndSaveCheckpoint()) {
-                nativeLoadCheckpoint(currentCheckpoint().getAbsolutePath());
+                MotorAICheckpointStore.load(currentCheckpoint().getAbsolutePath());
                 training.set(false);
                 MiniAiTrainingCoordinator.error(this, 1, bestPercent, goalStep, validation,
                         "Salvataggio post-chunk fallito.");
@@ -1320,7 +1320,7 @@ public class MainActivity extends Activity {
             int measured = goal3PercentFromValidation(validation);
 
             if (validation + 0.20 < beforeAcc) {
-                boolean restored = nativeLoadCheckpoint(currentCheckpoint().getAbsolutePath());
+                boolean restored = MotorAICheckpointStore.load(currentCheckpoint().getAbsolutePath());
                 training.set(false);
                 if (!restored) {
                     MiniAiTrainingCoordinator.error(this, 2, bestPercent, goalStep, validation,
@@ -1341,7 +1341,7 @@ public class MainActivity extends Activity {
             }
 
             if (!rotateAndSaveCheckpoint()) {
-                nativeLoadCheckpoint(currentCheckpoint().getAbsolutePath());
+                MotorAICheckpointStore.load(currentCheckpoint().getAbsolutePath());
                 training.set(false);
                 MiniAiTrainingCoordinator.error(this, 2, bestPercent, goalStep, validation,
                         "Salvataggio post-chunk fallito.");
@@ -1461,7 +1461,7 @@ public class MainActivity extends Activity {
             int measured = goal4PercentFromValidation(validation);
 
             if (validation + 0.20 < beforeAcc) {
-                nativeLoadCheckpoint(currentCheckpoint().getAbsolutePath());
+                MotorAICheckpointStore.load(currentCheckpoint().getAbsolutePath());
                 training.set(false);
                 MiniAiTrainingCoordinator.error(this, 3, bestPercent, goalStep, validation,
                         "Regressione rilevata: rollback automatico.");
@@ -1470,7 +1470,7 @@ public class MainActivity extends Activity {
             }
 
             if (!rotateAndSaveCheckpoint()) {
-                nativeLoadCheckpoint(currentCheckpoint().getAbsolutePath());
+                MotorAICheckpointStore.load(currentCheckpoint().getAbsolutePath());
                 training.set(false);
                 MiniAiTrainingCoordinator.error(this, 3, bestPercent, goalStep, validation,
                         "Salvataggio post-chunk fallito.");
@@ -1588,7 +1588,7 @@ public class MainActivity extends Activity {
             int measured = goal5PercentFromValidation(validation);
 
             if (validation + 0.20 < beforeAcc) {
-                nativeLoadCheckpoint(currentCheckpoint().getAbsolutePath());
+                MotorAICheckpointStore.load(currentCheckpoint().getAbsolutePath());
                 training.set(false);
                 MiniAiTrainingCoordinator.error(this, 4, bestPercent, goalStep, validation,
                         "Regressione rilevata: rollback automatico.");
@@ -1597,7 +1597,7 @@ public class MainActivity extends Activity {
             }
 
             if (!rotateAndSaveCheckpoint()) {
-                nativeLoadCheckpoint(currentCheckpoint().getAbsolutePath());
+                MotorAICheckpointStore.load(currentCheckpoint().getAbsolutePath());
                 training.set(false);
                 MiniAiTrainingCoordinator.error(this, 4, bestPercent, goalStep, validation,
                         "Salvataggio post-chunk fallito.");
@@ -1714,7 +1714,7 @@ public class MainActivity extends Activity {
             int measured = goal6PercentFromValidation(validation);
 
             if (validation + 0.20 < beforeAcc) {
-                nativeLoadCheckpoint(currentCheckpoint().getAbsolutePath());
+                MotorAICheckpointStore.load(currentCheckpoint().getAbsolutePath());
                 training.set(false);
                 MiniAiTrainingCoordinator.error(this, 5, bestPercent, goalStep, validation,
                         "Regressione rilevata: rollback automatico.");
@@ -1723,7 +1723,7 @@ public class MainActivity extends Activity {
             }
 
             if (!rotateAndSaveCheckpoint()) {
-                nativeLoadCheckpoint(currentCheckpoint().getAbsolutePath());
+                MotorAICheckpointStore.load(currentCheckpoint().getAbsolutePath());
                 training.set(false);
                 MiniAiTrainingCoordinator.error(this, 5, bestPercent, goalStep, validation,
                         "Salvataggio post-chunk fallito.");
@@ -1814,9 +1814,9 @@ public class MainActivity extends Activity {
             if(!rotateAndSaveCheckpoint()){training.set(false);MiniAiTrainingCoordinator.error(this,6,bestPercent,0,beforeAcc,"Checkpoint pre-chunk non disponibile.");return false;}
             JSONObject after=new JSONObject(nativeGoal7TrainChunk(20));double validation=after.optDouble("validation_accuracy",0.0);
             int goalStep=after.optInt("goal7_step",0),measured=goal7PercentFromValidation(validation);
-            if(validation+0.20<beforeAcc){nativeLoadCheckpoint(currentCheckpoint().getAbsolutePath());training.set(false);
+            if(validation+0.20<beforeAcc){MotorAICheckpointStore.load(currentCheckpoint().getAbsolutePath());training.set(false);
                 MiniAiTrainingCoordinator.error(this,6,bestPercent,goalStep,validation,"Regressione rilevata: rollback automatico.");return false;}
-            if(!rotateAndSaveCheckpoint()){nativeLoadCheckpoint(currentCheckpoint().getAbsolutePath());training.set(false);
+            if(!rotateAndSaveCheckpoint()){MotorAICheckpointStore.load(currentCheckpoint().getAbsolutePath());training.set(false);
                 MiniAiTrainingCoordinator.error(this,6,bestPercent,goalStep,validation,"Salvataggio post-chunk fallito.");return false;}
             bestPercent=Math.max(bestPercent,measured);
             String evidence=String.format(Locale.ITALY,"Validation strumenti %.1f%% · step obiettivo %d",validation*100.0,goalStep);
@@ -1858,8 +1858,8 @@ public class MainActivity extends Activity {
             JSONObject before=new JSONObject(nativeGoal8Evaluate());double beforeAcc=before.optDouble("validation_accuracy",0);
             if(!rotateAndSaveCheckpoint()){training.set(false);return false;}
             JSONObject after=new JSONObject(nativeGoal8TrainChunk(20));double validation=after.optDouble("validation_accuracy",0);int goalStep=after.optInt("goal8_step",0);
-            if(validation+0.20<beforeAcc){nativeLoadCheckpoint(currentCheckpoint().getAbsolutePath());training.set(false);MiniAiTrainingCoordinator.error(this,7,bestPercent,goalStep,validation,"Regressione rilevata.");return false;}
-            if(!rotateAndSaveCheckpoint()){nativeLoadCheckpoint(currentCheckpoint().getAbsolutePath());training.set(false);return false;}
+            if(validation+0.20<beforeAcc){MotorAICheckpointStore.load(currentCheckpoint().getAbsolutePath());training.set(false);MiniAiTrainingCoordinator.error(this,7,bestPercent,goalStep,validation,"Regressione rilevata.");return false;}
+            if(!rotateAndSaveCheckpoint()){MotorAICheckpointStore.load(currentCheckpoint().getAbsolutePath());training.set(false);return false;}
             bestPercent=Math.max(bestPercent,goal8PercentFromValidation(validation));
             String ev=String.format(Locale.ITALY,"Validation pianificazione %.1f%% · step obiettivo %d",validation*100.0,goalStep);
             MiniAiTrainingCoordinator.progress(this,7,bestPercent,goalStep,validation,ev,"Sta imparando a riconoscere ed eseguire un piano a due azioni.");
@@ -1912,14 +1912,14 @@ public class MainActivity extends Activity {
             double validation=after.optDouble("validation_accuracy",0.0);
             int goalStep=after.optInt("goal9_step",0);
             if(validation+0.20<beforeAcc){
-                nativeLoadCheckpoint(currentCheckpoint().getAbsolutePath());
+                MotorAICheckpointStore.load(currentCheckpoint().getAbsolutePath());
                 training.set(false);
                 MiniAiTrainingCoordinator.error(this,8,bestPercent,goalStep,validation,
                         "Regressione rilevata: rollback automatico.");
                 return false;
             }
             if(!rotateAndSaveCheckpoint()){
-                nativeLoadCheckpoint(currentCheckpoint().getAbsolutePath());
+                MotorAICheckpointStore.load(currentCheckpoint().getAbsolutePath());
                 training.set(false);
                 return false;
             }
@@ -1983,13 +1983,30 @@ public class MainActivity extends Activity {
         return false;
     }
 
+    private MiniAiAssistantCycle.Result recoverGoal10BeforeCertification() {
+        MiniAiAssistantCycle.Result check = MiniAiAssistantCycle.evaluate(this);
+        for (int n=0; n<12 && check.percent<100 && training.get(); n++) {
+            Guard guard=readGuard();
+            if (!guard.allowed) break;
+            MotorAIGoal10Recovery.Step step=MotorAIGoal10Recovery.oneChunk(this,check);
+            if (!step.continued) {
+                appendDiagnosticFailure("Goal10: "+step.message);
+                break;
+            }
+            check=MiniAiAssistantCycle.evaluate(this);
+            MiniAiTrainingStatus.update(this,9,"training",check.percent,check.passed,
+                    check.passed/(double)Math.max(1,check.total),step.message);
+        }
+        return check;
+    }
+
     private void runMiniAiGoal10Certification() throws Exception {
         int current = MiniAiGoals.percent(this, 9);
         MiniAiTrainingStatus.update(this, 9, "testing", current, 0, 0.0,
                 "Certificazione end-to-end del ciclo mini-assistente.");
         state.post(() -> state.setText("Stato: Obiettivo Mini-AI 10/10 · certificazione end-to-end"));
 
-        MiniAiAssistantCycle.Result result = MiniAiAssistantCycle.evaluate(this);
+        MiniAiAssistantCycle.Result result = recoverGoal10BeforeCertification();
         MiniAiGoals.updateGoal(this, 9, result.percent, result.evidence);
 
         JSONObject foundation = new JSONObject(nativeEvaluate());
@@ -2006,6 +2023,7 @@ public class MainActivity extends Activity {
 
         if (result.percent >= 100) {
             MiniAiTrainingCoordinator.completed(this, 9, result.total, 1.0, result.evidence);
+            MotorAIGoal10Recovery.clear(this);
             rotateAndSaveCheckpoint();
             forceDiagnosticSnapshot(new JSONObject(nativeEvaluate()), "miniai_goal10_completed");
             training.set(false);
@@ -2094,7 +2112,7 @@ public class MainActivity extends Activity {
             Guard g = readGuard();
 
             StringBuilder b = new StringBuilder();
-            b.append("MotorAI Seed 021\n");
+            b.append("MotorAI Seed 021R2\n");
             b.append("Snapshot: ").append(diagnosticsTimestamp()).append("\n");
             b.append("Motivo: ").append(reason).append("\n");
             b.append("Livello: L").append(level)
@@ -2357,13 +2375,7 @@ public class MainActivity extends Activity {
     }
 
     private boolean rotateAndSaveCheckpoint() {
-        File root = checkpointRoot();
-        if (!root.exists() && !root.mkdirs()) return false;
-        deleteTree(tempCheckpoint());
-        if (!nativeSaveCheckpoint(tempCheckpoint().getAbsolutePath())) return false;
-        deleteTree(previousCheckpoint());
-        if (currentCheckpoint().exists() && !currentCheckpoint().renameTo(previousCheckpoint())) return false;
-        return tempCheckpoint().renameTo(currentCheckpoint());
+        return MotorAICheckpointStore.rotateAndSave(this);
     }
 
     private static void deleteTree(File f) {

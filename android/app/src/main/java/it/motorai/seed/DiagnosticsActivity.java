@@ -16,6 +16,7 @@ import android.widget.Toast;
 public class DiagnosticsActivity extends Activity {
     private TextView report;
     private TextView failures;
+    private TextView goal10Details;
 
     private TextView text(String value, int sp, boolean bold) {
         TextView v = new TextView(this);
@@ -50,6 +51,10 @@ public class DiagnosticsActivity extends Activity {
         report = text("Caricamento diagnosi…", 14, false);
         root.addView(report);
 
+        root.addView(text("🎯 Goal 10 — verifiche dettagliate", 18, true));
+        goal10Details = text("Certificazione ancora da misurare.", 14, false);
+        root.addView(goal10Details);
+
         root.addView(text("⚠️ Problemi rilevati", 18, true));
         failures = text("Nessun problema registrato.", 14, false);
         root.addView(failures);
@@ -63,7 +68,7 @@ public class DiagnosticsActivity extends Activity {
 
         refresh.setOnClickListener(v -> load());
         copy.setOnClickListener(v -> {
-            String all = report.getText().toString() + "\n\n⚠️ PROBLEMI RILEVATI\n" +
+            String all = report.getText().toString() + "\n\n🎯 GOAL 10\n" + goal10Details.getText() + "\n\n⚠️ PROBLEMI RILEVATI\n" +
                     failures.getText().toString();
             ClipboardManager cm = (ClipboardManager) getSystemService(Context.CLIPBOARD_SERVICE);
             cm.setPrimaryClip(ClipData.newPlainText("Diagnostica MotorAI", all));
@@ -87,5 +92,8 @@ public class DiagnosticsActivity extends Activity {
         String errs = p.getString("failures", "");
         report.setText(body);
         failures.setText(errs.isEmpty() ? "✅ Nessun problema registrato." : errs);
+        SharedPreferences gp=getSharedPreferences("motorai_goal10_cert", MODE_PRIVATE);
+        goal10Details.setText(gp.getString("last_evidence",
+                "Goal 10 non ancora sottoposto a certificazione integrata."));
     }
 }

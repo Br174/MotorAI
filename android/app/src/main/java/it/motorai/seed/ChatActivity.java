@@ -136,7 +136,7 @@ public class ChatActivity extends Activity {
             boolean ready = true;
             try {
                 File current = new File(getFilesDir(), "motorai/checkpoints/current");
-                if (current.exists()) ready = MainActivity.nativeLoadCheckpoint(current.getAbsolutePath());
+                if (current.exists()) ready = MotorAICheckpointStore.load(current.getAbsolutePath());
             } catch (Throwable e) {
                 ready = false;
             }
