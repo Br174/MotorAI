@@ -27,7 +27,7 @@ jobs:
 
       - name: Verify all ten Goal10 integration checks after full training and checkpoint reload
         id: goal10_integration_gate
-        continue-on-error: true
+        continue-on-error: false
         run: |
           g++ -std=c++20 -O2 -pthread -Iandroid/app/src/main/cpp \
             tools/goal10_integrated_smoke.cpp android/app/src/main/cpp/motorai_core.cpp \
