@@ -119,6 +119,9 @@ public:
 
     // Mini-AI Goal 1: understand the broad intent of a simple Italian request.
     // This module is trained from scratch and is isolated from the accepted L0-L5 weights.
+    // R3R10: augment TRAIN only, explicitly invoked on an isolated Engine copy.
+    // Never called from the live model; held-out validation and test are unchanged.
+    void augmentPhase2TrainOnly();
     Metrics evaluateGoal1Train();
     Metrics evaluateGoal1Validation();
     Metrics evaluateGoal1Test();
