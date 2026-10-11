@@ -67,10 +67,10 @@ for required in (
     "tenChecks(", "nativeProbeCheckpoint(", "guard_no_regression",
 ):
     assert required in java,required
-assert "MotorAIPhase2ShadowTrial.runR3R12(this)" in ui
+assert "MotorAIPhase2ShadowTrial.runR3R14(this)" in ui
 assert "nativePhase2R3R12Experiment(String sourcePath, String candidatePath)" in main
-assert "MotorAI Seed 021R3R13" in main
-assert "versionCode = 39" in gradle
-assert 'versionName = "0.21.16-seed021r3r13"' in gradle
+assert "MotorAI Seed 021R3R14" in main
+assert "versionCode = 40" in gradle
+assert 'versionName = "0.21.17-seed021r3r14"' in gradle
 assert "Verify R3R12 Goal7 category guard and independent holdout" in workflow
 print("PASS R3R12: balanced shadow Goal7, no old TEST selection, 24 supplemental val, 20 untouched final blind, no live writes")
