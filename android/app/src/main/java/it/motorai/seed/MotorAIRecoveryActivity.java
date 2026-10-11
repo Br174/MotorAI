@@ -53,7 +53,7 @@ public final class MotorAIRecoveryActivity extends Activity {
         LinearLayout root=new LinearLayout(this);root.setOrientation(LinearLayout.VERTICAL);
         root.setPadding(18,22,18,22);scroll.addView(root);
         root.addView(text("🛟 MotorAI — Recupero d'emergenza",24,true));
-        root.addView(text("Allenamento SOSPESO. Qui nessuna verifica modifica pesi o checkpoint. Prima esportare lo ZIP su una cartella esterna, poi valutare il ripristino.",15,false));
+        root.addView(text("Allenamento SOSPESO. Ispezione di sola lettura. Lo ZIP salva anche i file previous non riconosciuti, senza modificarli. Conservi una copia esterna prima di qualsiasi ripristino.",15,false));
         detail=text("",14,false);root.addView(detail);
         status=text("Nessuna modifica eseguita.",15,true);root.addView(status);
         button(root,"🔎 Esamina i checkpoint (sola lettura)",this::showState);
@@ -135,7 +135,7 @@ public final class MotorAIRecoveryActivity extends Activity {
                     MotorAIRecoveryStore.exportZip(this,output);
                 }
                 exported=true;
-                return "ZIP salvato. Conservi una copia su Drive o SSD.";
+                return "ZIP salvato: include anche i checkpoint con formato non riconosciuto. Conservi una copia su Drive o SSD.";
             });
         } else if(req==IMPORT) {
             runIo(()->{

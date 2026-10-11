@@ -14,7 +14,7 @@ import java.util.zip.*;
  * File transactions share MotorAICheckpointStore's existing single-writer mutex.
  */
 public final class MotorAIRecoveryStore {
-    public static final String[] SLOTS={"current","previous","autotrain-baseline","previous-r2-safety"};
+    public static final String[] SLOTS={"current","previous","autotrain-baseline","previous-r2-safety","r3-pre-restore-protected"};
     private static final String[] PREFS={
         "motorai_mini_ai_goals","motorai_evolution","motorai_runtime",
         "motorai_training_status","motorai_goal10_recovery","motorai_goal10_cert"
@@ -54,25 +54,40 @@ public final class MotorAIRecoveryStore {
             StringBuilder g=new StringBuilder();
             for(int i=0;i<goalSteps.length;i++)if(goalSteps[i]>0)g.append(" G").append(i+1).append("=").append(goalSteps[i]);
             return name+" · L"+level+" · step "+step+" · validation "+
-                    String.format(Locale.ITALY,"%.1f%%",accuracy*100.0)+g+" · SHA "+fingerprint.substring(0,12);
+                    String.format(Locale.ITALY,"%.1f%%",accuracy*100.0)+g+" · SHA "+fingerprint.substring(0,12)
+                    +("OK".equals(detail)?"":" · "+detail);
         }
     }
     private static Checkpoint scanDir(String slot,File dir) {
         try {
-            byte[] header=read(new File(dir,"weights.bin"),MAX_FILE);
-            byte[] text=read(new File(dir,"checkpoint.json"),128*1024);
-            if(header.length<32||!new String(header,0,8,StandardCharsets.US_ASCII).equals("MOTAI020"))throw new IOException("Formato pesi sconosciuto");
-            int ver=(header[8]&255)|((header[9]&255)<<8)|((header[10]&255)<<16)|((header[11]&255)<<24);
-            if(ver!=14)throw new IOException("Versione pesi incompatibile: "+ver);
-            JSONObject j=new JSONObject(new String(text,StandardCharsets.UTF_8));
-            if(!"MOTORAI_CHECKPOINT_NATIVE_V2".equals(j.optString("format")))throw new IOException("Formato metadata incompatibile");
-            int step=j.optInt("global_step",-1), level=j.optInt("curriculum_level",-1);
-            double acc=j.optDouble("validation_answer_accuracy",Double.NaN);
-            if(step<0||level<0||level>5||!Double.isFinite(acc)||acc<0||acc>1)throw new IOException("Metadata non validi");
+            byte[] weights=read(new File(dir,"weights.bin"),MAX_FILE);
+            byte[] metadata=read(new File(dir,"checkpoint.json"),128*1024);
+            MotorAILegacyHeader.Parsed h=MotorAILegacyHeader.parse(weights);
+            if(!h.compatible()){
+                StringBuilder preview=new StringBuilder();
+                for(int i=0;i<Math.min(8,weights.length);i++)
+                    preview.append(String.format(Locale.US,"%02x",weights[i]&255));
+                throw new IOException(h.diagnostic+" · header="+preview);
+            }
+            JSONObject j=new JSONObject(new String(metadata,StandardCharsets.UTF_8));
+            String fmt=j.optString("format","");
+            if(!fmt.isEmpty()&&!"MOTORAI_CHECKPOINT_NATIVE_V2".equals(fmt))
+                throw new IOException("Metadata non compatibili: "+fmt);
+            int step=j.has("global_step")?j.optInt("global_step",-1):h.step;
+            int level=j.has("curriculum_level")?j.optInt("curriculum_level",-1):h.level;
+            if(step!=h.step||level!=h.level)
+                throw new IOException("Incoerenza tra pesi e metadata");
+            double acc=j.optDouble("validation_answer_accuracy",0.0);
+            if(step<0||level<0||level>5||!Double.isFinite(acc)||acc<0||acc>1)
+                throw new IOException("Metadata non validi");
             int[] goals=new int[9];
             for(int i=0;i<9;i++)goals[i]=j.optInt("goal"+(i+1)+"_step",0);
-            return new Checkpoint(slot,true,level,step,acc,goals,sha(header),"OK");
-        }catch(Exception ex){return new Checkpoint(slot,false,0,0,0,new int[9],"",ex.getMessage());}
+            String detail=h.version==14?"OK":
+                 ("Formato storico "+h.magic+" (caricamento nativo non ancora verificato)");
+            return new Checkpoint(slot,true,level,step,acc,goals,sha(weights),detail);
+        }catch(Exception ex){
+            return new Checkpoint(slot,false,0,0,0,new int[9],"",ex.getMessage());
+        }
     }
     public static List<Checkpoint> inspect(Context c) {
         synchronized(MotorAICheckpointStore.recoveryMutex()){
@@ -104,25 +119,34 @@ public final class MotorAIRecoveryStore {
     }
     public static void exportZip(Context c,OutputStream output)throws Exception{
         synchronized(MotorAICheckpointStore.recoveryMutex()){
-            JSONObject hashes=new JSONObject();int count=0;
+            JSONObject hashes=new JSONObject();int preserved=0,recognized=0;
             ZipOutputStream zip=new ZipOutputStream(output);
             for(String name:SLOTS){
                 File dir=new File(root(c),name);
-                if(!scanDir(name,dir).valid)continue;
+                boolean hasFiles=false;
+                // Important: preserve RAW files even when their magic is old,
+                // unknown or corrupted. Never discard a potentially rescuable
+                // previous checkpoint because the inspector does not recognize it.
                 for(String file:new String[]{"checkpoint.json","weights.bin"}){
+                    File source=new File(dir,file);
+                    if(!source.isFile())continue;
                     put(zip,"checkpoints/"+name+"/"+file,
-                            read(new File(dir,file),MAX_FILE),hashes);
+                            read(source,MAX_FILE),hashes);
+                    hasFiles=true;
                 }
-                count++;
+                if(hasFiles)preserved++;
+                if(scanDir(name,dir).valid)recognized++;
             }
-            if(count==0)throw new IOException("Non ci sono checkpoint validi da esportare");
+            if(preserved==0)throw new IOException("Non ci sono checkpoint da esportare");
             for(String name:PREFS)put(zip,"prefs/"+name+".json",prefsJson(c,name),hashes);
             JSONObject manifest=new JSONObject()
                     .put("format","MOTORAI_RECOVERY_ZIP_V1")
                     .put("created_ms",System.currentTimeMillis())
                     .put("application_id","it.motorai.seed")
                     .put("entries_sha256",hashes)
-                    .put("slots",count);
+                    .put("slots",preserved)
+                    .put("recognized_slots",recognized)
+                    .put("raw_preservation",true);
             put(zip,"manifest.json",manifest.toString(2).getBytes(StandardCharsets.UTF_8),
                     new JSONObject());
             zip.finish();zip.flush();

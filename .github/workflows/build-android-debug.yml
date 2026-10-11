@@ -25,6 +25,20 @@ jobs:
       - name: Checkout
         uses: actions/checkout@v6
 
+      - name: Verify historic checkpoint magic compatibility and corrupt-header rejection
+        id: checkpoint_header_gate
+        run: |
+          mkdir -p /tmp/motorai-sos-header
+          javac -d /tmp/motorai-sos-header \
+            android/app/src/main/java/it/motorai/seed/MotorAILegacyHeader.java \
+            tools/MotorAILegacyHeaderSmoke.java
+          java -cp /tmp/motorai-sos-header MotorAILegacyHeaderSmoke
+          grep -q 'raw_preservation' android/app/src/main/java/it/motorai/seed/MotorAIRecoveryStore.java
+          if grep -q 'if(!scanDir(name,dir).valid)continue;' android/app/src/main/java/it/motorai/seed/MotorAIRecoveryStore.java; then
+            echo 'ERROR: RAW previous is still excluded from ZIP'
+            exit 81
+          fi
+
       - name: Verify emergency recovery safety invariants
         id: emergency_gate
         run: |
@@ -237,10 +251,10 @@ jobs:
         run: gradle --no-daemon --stacktrace assembleDebug
 
       - name: Upload MotorAI APK
-        if: steps.native_gate.outcome == 'success' && steps.goal1_gate.outcome == 'success' && steps.goal2_gate.outcome == 'success' && steps.goal3_gate.outcome == 'success' && steps.goal3_recovery_gate.outcome == 'success' && steps.goal4_gate.outcome == 'success' && steps.goal5_gate.outcome == 'success' && steps.goal6_gate.outcome == 'success' && steps.goal7_gate.outcome == 'success' && steps.goal8_gate.outcome == 'success' && steps.goal9_gate.outcome == 'success' && steps.goal10_gate.outcome == 'success' && steps.goal10_integration_gate.outcome == 'success' && steps.emergency_gate.outcome == 'success' && steps.android_build.outcome == 'success'
+        if: steps.native_gate.outcome == 'success' && steps.goal1_gate.outcome == 'success' && steps.goal2_gate.outcome == 'success' && steps.goal3_gate.outcome == 'success' && steps.goal3_recovery_gate.outcome == 'success' && steps.goal4_gate.outcome == 'success' && steps.goal5_gate.outcome == 'success' && steps.goal6_gate.outcome == 'success' && steps.goal7_gate.outcome == 'success' && steps.goal8_gate.outcome == 'success' && steps.goal9_gate.outcome == 'success' && steps.goal10_gate.outcome == 'success' && steps.goal10_integration_gate.outcome == 'success' && steps.emergency_gate.outcome == 'success' && steps.checkpoint_header_gate.outcome == 'success' && steps.android_build.outcome == 'success'
         uses: actions/upload-artifact@v6
         with:
-          name: MotorAI-Seed021R3-debug
+          name: MotorAI-Seed021R3R1-debug
           path: android/app/build/outputs/apk/debug/*.apk
           if-no-files-found: error
           retention-days: 14
@@ -262,6 +276,7 @@ jobs:
           echo "Mini-AI Goal10: ${{ steps.goal10_gate.outcome }}"
           echo "Goal10 integration: ${{ steps.goal10_integration_gate.outcome }}"
           echo "Emergency safety: ${{ steps.emergency_gate.outcome }}"
+          echo "Legacy checkpoint header: ${{ steps.checkpoint_header_gate.outcome }}"
           echo "Android build: ${{ steps.android_build.outcome }}"
           test "${{ steps.native_gate.outcome }}" = "success"
           test "${{ steps.goal1_gate.outcome }}" = "success"
@@ -277,6 +292,7 @@ jobs:
           test "${{ steps.goal10_gate.outcome }}" = "success"
           test "${{ steps.goal10_integration_gate.outcome }}" = "success"
           test "${{ steps.emergency_gate.outcome }}" = "success"
+          test "${{ steps.checkpoint_header_gate.outcome }}" = "success"
           test "${{ steps.android_build.outcome }}" = "success"
 
 # Seed004 final validation trigger
