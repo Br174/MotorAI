@@ -2,6 +2,7 @@
 #include <mutex>
 #include <string>
 #include <cmath>
+#include <chrono>
 #include "motorai_core.h"
 
 namespace {
@@ -45,6 +46,91 @@ Java_it_motorai_seed_MainActivity_nativeProbeCheckpoint(JNIEnv* env, jclass, jst
             +",\"retention_l3_accuracy\":"+std::to_string(retained.answer_accuracy)
             +",\"goal1_step\":"+std::to_string(isolated.goal1Step())+"}");
     }catch(...){return js(env,"{\"loaded\":false,\"live_unchanged\":true}");}
+}
+
+
+/** Stage B: Goal1 shadow fine-tuning. The trained candidate stays off-line in a
+ * separate Engine and directory; g_engine and current checkpoint are untouched.
+ * Only regular TRAIN examples are used. Independent validation/test never train.
+ */
+extern "C" JNIEXPORT jstring JNICALL
+Java_it_motorai_seed_MainActivity_nativeGoal1ShadowTrial(JNIEnv* env, jclass,
+                                                          jstring basePath, jstring candidatePath) {
+    try {
+        std::lock_guard<std::mutex> guard(g_engine_call_mu);
+        const int liveStep=g_engine.globalStep(), liveGoal1=g_engine.goal1Step();
+        const std::string base=toString(env,basePath);
+        const std::string dest=toString(env,candidatePath);
+        if(base.empty()||dest.empty()||base==dest)
+            return js(env,"{\"status\":\"invalid_path\"}");
+        motorai::Engine shadow(174);
+        if(!shadow.loadCheckpoint(base))return js(env,"{\"status\":\"checkpoint_unreadable\"}");
+        const auto baselineVal=shadow.evaluateGoal1Validation();
+        const auto baselineTest=shadow.evaluateGoal1Test();
+        const auto origin=shadow.classifyGoal1("quanto fa sette piu otto");
+        auto confidence=[](const std::string& json)->double {
+            const std::string token="\"confidence\":";
+            auto p=json.find(token);
+            if(p==std::string::npos)return -1;
+            try {return std::stod(json.substr(p+token.size()));}
+            catch (...) {return -1;}
+        };
+        auto isCalc=[](const std::string& json)->bool {
+            return json.find("\"intent\":\"calcolo\"")!=std::string::npos;
+        };
+        const double before=confidence(origin);
+        const double liveConfidence=confidence(g_engine.classifyGoal1("quanto fa sette piu otto"));
+        if(!std::isfinite(before)||std::abs(before-liveConfidence)>0.00005
+           ||shadow.goal1Step()!=liveGoal1)
+            return js(env,"{\"status\":\"source_out_of_sync\"}");
+        double after=before, test=baselineTest.answer_accuracy;
+        double validation=baselineVal.answer_accuracy;
+        int steps=0;
+        bool ready=false;
+        const auto start=std::chrono::steady_clock::now();
+        // Early stopping only on held-out VALIDATION, never on final-test text.
+        double bestValidation=baselineVal.answer_accuracy;
+        int stagnant=0;
+        for(int n=0;n<100;++n){
+            auto elapsed=std::chrono::duration<double>(
+                std::chrono::steady_clock::now()-start).count();
+            if(elapsed>=7.5)break;
+            shadow.trainGoal1(20,24,0.02f);
+            steps+=20;
+            validation=shadow.evaluateGoal1Validation().answer_accuracy;
+            if(validation+0.00001<baselineVal.answer_accuracy)break;
+            if(validation>bestValidation+0.00001){bestValidation=validation; stagnant=0;}
+            else ++stagnant;
+            if(stagnant>=16 && steps>=200)break;
+        }
+        // Final holdout inspected ONCE after training has stopped.
+        const auto actual=shadow.classifyGoal1("quanto fa sette piu otto");
+        after=confidence(actual);
+        test=shadow.evaluateGoal1Test().answer_accuracy;
+        const bool retained=validation+0.00001>=baselineVal.answer_accuracy
+                         && test+0.00001>=baselineTest.answer_accuracy
+                         && validation>=.90 && test>=.90;
+        const bool generalized=isCalc(shadow.classifyGoal1("quanto fa undici piu tre"))
+                      && isCalc(shadow.classifyGoal1("calcola quattordici piu sei"))
+                      && shadow.classifyGoal1("ciao").find("\"intent\":\"saluto\"")!=std::string::npos;
+        ready=retained&&generalized&&isCalc(actual)&&after>=.50;
+        const bool unchanged=liveStep==g_engine.globalStep() &&
+                             liveGoal1==g_engine.goal1Step();
+        if(!unchanged)return js(env,"{\"status\":\"live_changed\"}");
+        if(ready&&!shadow.saveCheckpoint(dest))
+            return js(env,"{\"status\":\"candidate_save_failed\"}");
+        const std::string state=ready?"candidate_ready":"insufficient_confidence";
+        return js(env,std::string("{\"status\":\"")+state
+              +"\",\"live_unchanged\":true,\"candidate_ready\":"
+              +(ready?"true":"false")
+              +",\"confidence_before\":"+std::to_string(before)
+              +",\"confidence_after\":"+std::to_string(after)
+              +",\"validation_before\":"+std::to_string(baselineVal.answer_accuracy)
+              +",\"validation_after\":"+std::to_string(validation)
+              +",\"test_before\":"+std::to_string(baselineTest.answer_accuracy)
+              +",\"test_after\":"+std::to_string(test)
+              +",\"shadow_train_steps\":"+std::to_string(steps)+"}");
+    }catch(...){return js(env,"{\"status\":\"shadow_exception\"}");}
 }
 
 extern "C" JNIEXPORT jstring JNICALL

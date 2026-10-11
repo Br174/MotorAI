@@ -18,6 +18,7 @@ public class DiagnosticsActivity extends Activity {
     private TextView failures;
     private TextView goal10Details;
     private TextView goal10Inspector;
+    private TextView goal1Trial;
 
     private TextView text(String value, int sp, boolean bold) {
         TextView v = new TextView(this);
@@ -60,6 +61,11 @@ public class DiagnosticsActivity extends Activity {
         root.addView(goal10Inspector);
         Button inspect = button("🔬 Verifica Goal 10 (sola lettura)");
         root.addView(inspect);
+        root.addView(text("🧪 Goal 1 — Prova in copia isolata", 18, true));
+        goal1Trial = text("Cervello attivo invariato. Prova non ancora avviata.",14,false);
+        root.addView(goal1Trial);
+        Button preview = button("🧪 Prova recupero Goal 1 (copia isolata)");
+        root.addView(preview);
 
         root.addView(text("⚠️ Problemi rilevati", 18, true));
         failures = text("Nessun problema registrato.", 14, false);
@@ -87,8 +93,20 @@ public class DiagnosticsActivity extends Activity {
                 });
             }, "Goal10-ReadOnly").start();
         });
+        preview.setOnClickListener(v -> {
+            preview.setEnabled(false);
+            goal1Trial.setText("Allenamento soltanto nella copia temporanea…");
+            new Thread(() -> {
+                String result;
+                try { result=MotorAIGoal10ShadowTrial.preview(this); }
+                catch(Throwable e){result="Prova interrotta: "+e.getClass().getSimpleName()
+                    +" — cervello attivo non allenato.";}
+                final String shown=result;
+                runOnUiThread(() -> {goal1Trial.setText(shown);preview.setEnabled(true);});
+            },"Goal1-Shadow-Preview").start();
+        });
         copy.setOnClickListener(v -> {
-            String all = report.getText().toString() + "\n\n🎯 GOAL 10\n" + goal10Details.getText() + "\n\n🔬 PROVE REALI NON INVASIVE\n" + goal10Inspector.getText() + "\n\n⚠️ PROBLEMI RILEVATI\n" +
+            String all = report.getText().toString() + "\n\n🎯 GOAL 10\n" + goal10Details.getText() + "\n\n🔬 PROVE REALI NON INVASIVE\n" + goal10Inspector.getText() + "\n\n🧪 PROVA GOAL1 ISOLATA\n" + goal1Trial.getText() + "\n\n⚠️ PROBLEMI RILEVATI\n" +
                     failures.getText().toString();
             ClipboardManager cm = (ClipboardManager) getSystemService(Context.CLIPBOARD_SERVICE);
             cm.setPrimaryClip(ClipData.newPlainText("Diagnostica MotorAI", all));
