@@ -2620,6 +2620,104 @@ void Engine::augmentPhase2TrainOnly() {
     for (const auto& x:router) impl_->goal7data.train.push_back({x.second,x.first});
 }
 
+/** R3R14: supervised contrasting pairs that intentionally share context.
+ * Both sides are inserted ONLY into the TRAIN subsets of a shadow Engine.
+ * The existing native softmax cross-entropy is retained; this is paired
+ * hard-negative supervision, NOT a new contrastive embedding-loss network.
+ * New validation guard and final blind sets are intentionally disjoint.
+ */
+void Engine::augmentPhase2R3R14ContrastPairsTrainOnly(){
+    std::lock_guard<std::mutex> lock(impl_->mu);
+    const std::pair<int,const char*> intentPairs[]={
+        {0,"per favore ti saluto prima di partire"},
+        {4,"per favore avvia la radio prima di partire"},
+        {0,"mi rivolgo a te con un saluto gentile"},
+        {4,"mi rivolgo a te per avviare il lettore"},
+        {0,"buongiorno ti auguro ogni bene"},
+        {3,"buongiorno puoi cercare articoli di geografia"},
+        {0,"sono qui soltanto per salutarti"},
+        {2,"sono qui per farti calcolare una differenza"},
+        {0,"un caloroso ciao al mio assistente"},
+        {1,"una domanda sul funzionamento di un pianeta"},
+        {0,"vorrei dirti una frase di benvenuto"},
+        {3,"vorrei trovare una fonte sulla fotosintesi"},
+        {0,"ti auguro una splendida serata"},
+        {4,"ti chiedo di aprire la schermata principale"},
+        {0,"arrivo per mandarti tanti saluti"},
+        {2,"arrivo per chiederti una somma di numeri"},
+        {1,"vorrei una spiegazione di cosa sia una cellula"},
+        {3,"vorrei una ricerca sul web riguardo le cellule"},
+        {1,"mi spieghi che cosa significa pressione"},
+        {2,"mi calcoli quanto fa undici sommato a sette"},
+        {1,"che cos e la rotazione terrestre"},
+        {3,"cerca un articolo sulla rotazione terrestre"},
+        {1,"dimmi come funzionano i fulmini"},
+        {4,"avvia una funzione per accendere le luci"},
+        {1,"descrivi il significato della parola gravita"},
+        {2,"esegui il prodotto di sei e diciannove"},
+        {1,"puoi spiegare la struttura della materia"},
+        {3,"puoi rintracciare un documento sulla materia"},
+        {2,"trova il risultato aritmetico di sette piu dodici"},
+        {3,"trova documenti scientifici sulla chimica"},
+        {2,"vorrei il totale della somma fra tredici e ventuno"},
+        {3,"vorrei una fonte internet sulla storia antica"},
+        {2,"per favore esegui una divisione semplice"},
+        {4,"per favore apri un documento da modificare"},
+        {2,"risolvi un esercizio di sottrazione numerica"},
+        {3,"risolvi la ricerca online sulle energie pulite"},
+        {2,"fai un conto con numeri e operazioni"},
+        {4,"fai partire la riproduzione di un brano"},
+        {3,"cerca una notizia recente sullo spazio"},
+        {4,"cerca e apri la sezione impostazioni"},
+        {3,"recupera fonti pubblicate sui mammiferi"},
+        {4,"recupera e apri la schermata dei messaggi"}
+    };
+    const std::pair<int,const char*> routingPairs[]={
+        {0,"per favore parliamo un poco della giornata"},
+        {2,"per favore calcoliamo un numero e una somma"},
+        {0,"ti auguro buon pomeriggio amico virtuale"},
+        {3,"ti chiedo notizie di oggi da internet"},
+        {0,"voglio chiacchierare e salutarti"},
+        {1,"voglio ricordarti che vivo in montagna"},
+        {0,"rispondi al mio saluto con gentilezza"},
+        {2,"rispondi con il risultato numerico del conto"},
+        {0,"mi va di conversare semplicemente"},
+        {3,"mi va di cercare sul web il tema indicato"},
+        {0,"ti invio un abbraccio virtuale"},
+        {1,"ti invio il dato da ricordare per domani"},
+        {0,"facciamo una breve conversazione"},
+        {2,"facciamo un operazione matematica"},
+        {1,"puoi conservare il nome del mio cane"},
+        {3,"puoi ricercare il nome di un pianeta su internet"},
+        {1,"ricordami quale preferenza ho scritto"},
+        {3,"ricercami una pubblicazione sulla botanica"},
+        {1,"salva fra i ricordi il luogo in cui abito"},
+        {2,"salva il risultato di una moltiplicazione"},
+        {1,"quale informazione hai in memoria su di me"},
+        {3,"quale informazione trovi sul web su marte"},
+        {1,"registra che il mio numero preferito e nove"},
+        {2,"calcola quanto fa nove per due"},
+        {2,"esegui una somma aritmetica di due valori"},
+        {3,"esegui una ricerca scientifica in rete"},
+        {2,"mi serve una calcolatrice per una divisione"},
+        {3,"mi serve un motore di ricerca per una notizia"},
+        {2,"puoi addizionare due quantita distinte"},
+        {0,"puoi chiacchierare con me un momento"},
+        {2,"quanto vale il prodotto numerico di quattro e sei"},
+        {3,"quanto costa ora il prezzo del grano online"},
+        {2,"elabora il risultato di un problema matematico"},
+        {1,"elabora e conserva un ricordo sulla famiglia"},
+        {3,"trova aggiornamenti internet sui satelliti"},
+        {1,"trova nei miei ricordi il nome del gatto"},
+        {3,"consulta una fonte esterna su un artista"},
+        {2,"consulta uno strumento per fare un calcolo"},
+        {3,"rintraccia online una ricerca sui fiumi"},
+        {0,"rintraccia un modo gentile per salutare"}
+    };
+    for(const auto& q:intentPairs)impl_->goal1data.train.push_back({q.second,q.first});
+    for(const auto& q:routingPairs)impl_->goal7data.train.push_back({q.second,q.first});
+}
+
 /** R3R12: restore representative balance and old-class rehearsal on shadow TRAIN only.
  * Four labels (chat, memory, calculator, search) each receive a complementary set.
  * Validation, supplemental validation, final TEST, and blind questions are disjoint.
