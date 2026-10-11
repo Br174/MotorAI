@@ -494,6 +494,7 @@ public class MotorAIBackgroundJobService extends JobService {
         }
 
         int measured = goal3Percent(validation);
+        Goal3Recovery.recordSafeChunk(this);
         int best = Math.max(currentPercent, measured);
         String evidence = String.format(Locale.ITALY,
                 "Validation memoria %.1f%% · step obiettivo %d",

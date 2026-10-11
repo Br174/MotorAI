@@ -1348,6 +1348,7 @@ public class MainActivity extends Activity {
                 return false;
             }
 
+            Goal3Recovery.recordSafeChunk(this);
             bestPercent = Math.max(bestPercent, measured);
             String evidence = String.format(Locale.ITALY,
                     "Validation memoria %.1f%% · step obiettivo %d",
