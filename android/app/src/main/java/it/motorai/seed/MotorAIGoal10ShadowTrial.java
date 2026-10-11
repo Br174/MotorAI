@@ -76,6 +76,11 @@ public final class MotorAIGoal10ShadowTrial {
                 msg.append("\nTEST Goal1 candidato: ").append(pct(trial.optDouble("test_after",0)));
                 msg.append("\nValidation originale: ").append(pct(trial.optDouble("validation_before",0)));
                 msg.append("\nValidation candidata: ").append(pct(trial.optDouble("validation_after",0)));
+                msg.append("\nLoss validazione iniziale: ")
+                   .append(String.format(Locale.ITALY,"%.4f",trial.optDouble("validation_loss_before",0)));
+                msg.append("\nLoss validazione finale: ")
+                   .append(String.format(Locale.ITALY,"%.4f",trial.optDouble("validation_loss_after",0)));
+                msg.append("\nArresto prova: ").append(trial.optString("stopped_by","non specificato"));
                 msg.append("\nPassi allenati SOLO in memoria temporanea: ")
                    .append(trial.optInt("shadow_train_steps",0));
                 msg.append("\nSHA-256 CURRENT invariato.");

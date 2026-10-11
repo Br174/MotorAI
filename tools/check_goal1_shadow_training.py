@@ -7,6 +7,10 @@ fn=native.split("Java_it_motorai_seed_MainActivity_nativeGoal1ShadowTrial",1)[1]
 assert "motorai::Engine shadow(174)" in fn
 assert "shadow.loadCheckpoint(base)" in fn
 assert "shadow.trainGoal1(20,24,0.02f)" in fn
+assert "metrics.loss" in fn
+assert "lossStagnant>=36" in fn
+assert "stopped_by" in fn
+assert "validationLoss<=initialLoss+0.01" in fn
 assert "shadow.saveCheckpoint(dest)" in fn
 assert "shadow.evaluateGoal1Validation()" in fn
 assert "shadow.evaluateGoal1Test()" in fn
@@ -16,7 +20,7 @@ assert "liveGoal1==g_engine.goal1Step()" in fn
 assert "after>=.50" in fn
 assert "g_engine.trainGoal1(" not in fn
 assert "g_engine.loadCheckpoint(" not in fn
-block=fn.split("for(int n=0;n<100;++n)",1)[1].split("// Final holdout",1)[0]
+block=fn.split("for(int n=0;n<150;++n)",1)[1].split("// Only now perform",1)[0]
 assert "quanto fa sette piu otto" not in block
 assert "evaluateGoal1Test()" not in block
 assert "MotorAIGoal10DiagnosticHold.shouldHold(c)" in probe

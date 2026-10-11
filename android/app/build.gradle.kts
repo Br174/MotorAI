@@ -18,8 +18,8 @@ android {
         applicationId = "it.motorai.seed"
         minSdk = 26
         targetSdk = 36
-        versionCode = 31
-        versionName = "0.21.8-seed021r3r5"
+        versionCode = 32
+        versionName = "0.21.9-seed021r3r6"
         externalNativeBuild {
             cmake { cppFlags += listOf("-std=c++20", "-O3") }
         }

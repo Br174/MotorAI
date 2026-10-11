@@ -85,31 +85,55 @@ Java_it_motorai_seed_MainActivity_nativeGoal1ShadowTrial(JNIEnv* env, jclass,
             return js(env,"{\"status\":\"source_out_of_sync\"}");
         double after=before, test=baselineTest.answer_accuracy;
         double validation=baselineVal.answer_accuracy;
+        double validationLoss=baselineVal.loss;
+        const double initialLoss=baselineVal.loss;
         int steps=0;
         bool ready=false;
+        double bestLoss=initialLoss;
+        int lossStagnant=0;
+        int lossDegrades=0;
+        std::string stopReason="step_limit";
         const auto start=std::chrono::steady_clock::now();
-        // Early stopping only on held-out VALIDATION, never on final-test text.
-        double bestValidation=baselineVal.answer_accuracy;
-        int stagnant=0;
-        for(int n=0;n<100;++n){
-            auto elapsed=std::chrono::duration<double>(
+        // Validation accuracy may remain unchanged while predictive confidence
+        // keeps improving; do NOT stop merely because accuracy is at 95%.
+        // The final held-out TEST and integration request are never in this loop.
+        for(int n=0;n<150;++n){
+            const double elapsed=std::chrono::duration<double>(
                 std::chrono::steady_clock::now()-start).count();
-            if(elapsed>=7.5)break;
+            if(elapsed>=12.0){stopReason="time_limit";break;}
             shadow.trainGoal1(20,24,0.02f);
             steps+=20;
-            validation=shadow.evaluateGoal1Validation().answer_accuracy;
-            if(validation+0.00001<baselineVal.answer_accuracy)break;
-            if(validation>bestValidation+0.00001){bestValidation=validation; stagnant=0;}
-            else ++stagnant;
-            if(stagnant>=16 && steps>=200)break;
+            auto metrics=shadow.evaluateGoal1Validation();
+            validation=metrics.answer_accuracy;
+            validationLoss=metrics.loss;
+            if(!std::isfinite(validationLoss) || !std::isfinite(validation)){
+                stopReason="nonfinite_validation";break;
+            }
+            if(validation+0.00001<baselineVal.answer_accuracy){
+                stopReason="validation_accuracy_drop";break;
+            }
+            if(validationLoss+0.00001<bestLoss){
+                bestLoss=validationLoss;lossStagnant=0;lossDegrades=0;
+            }else{
+                ++lossStagnant;
+                if(validationLoss>bestLoss+0.01)++lossDegrades;
+                else lossDegrades=0;
+            }
+            if(lossDegrades>=5){stopReason="validation_loss_regression";break;}
+            if(lossStagnant>=36 && steps>=720){
+                stopReason="validation_loss_plateau";break;
+            }
         }
-        // Final holdout inspected ONCE after training has stopped.
+        // Only now perform an independent final-test evaluation and
+        // final integration prompt. Neither was used to tune training steps.
         const auto actual=shadow.classifyGoal1("quanto fa sette piu otto");
         after=confidence(actual);
         test=shadow.evaluateGoal1Test().answer_accuracy;
-        const bool retained=validation+0.00001>=baselineVal.answer_accuracy
+        const bool retained=std::isfinite(after)
+                         && validation+0.00001>=baselineVal.answer_accuracy
                          && test+0.00001>=baselineTest.answer_accuracy
-                         && validation>=.90 && test>=.90;
+                         && validation>=.90 && test>=.90
+                         && validationLoss<=initialLoss+0.01;
         const bool generalized=isCalc(shadow.classifyGoal1("quanto fa undici piu tre"))
                       && isCalc(shadow.classifyGoal1("calcola quattordici piu sei"))
                       && shadow.classifyGoal1("ciao").find("\"intent\":\"saluto\"")!=std::string::npos;
@@ -125,6 +149,9 @@ Java_it_motorai_seed_MainActivity_nativeGoal1ShadowTrial(JNIEnv* env, jclass,
               +(ready?"true":"false")
               +",\"confidence_before\":"+std::to_string(before)
               +",\"confidence_after\":"+std::to_string(after)
+              +",\"stopped_by\":\""+stopReason+"\""
+              +",\"validation_loss_before\":"+std::to_string(initialLoss)
+              +",\"validation_loss_after\":"+std::to_string(validationLoss)
               +",\"validation_before\":"+std::to_string(baselineVal.answer_accuracy)
               +",\"validation_after\":"+std::to_string(validation)
               +",\"test_before\":"+std::to_string(baselineTest.answer_accuracy)
