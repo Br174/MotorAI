@@ -333,10 +333,19 @@ public final class MotorAIPhase2ShadowTrial {
     }
 
 
+    private static boolean phoneTooWarm(Context context) {
+        android.content.Intent battery=context.registerReceiver(null,
+            new android.content.IntentFilter(android.content.Intent.ACTION_BATTERY_CHANGED));
+        if(battery==null)return false;
+        int temp=battery.getIntExtra(android.os.BatteryManager.EXTRA_TEMPERATURE,-1);
+        return temp>=400;
+    }
     public static String runR3R14(Context c) {
         if(!BUSY.compareAndSet(false,true))
             return "⏳ Un'altra copia isolata è già in allenamento: attendere.";
         try {
+            if(phoneTooWarm(c))
+                return "⛔ Batteria troppo calda (almeno 40 °C): copia non allenata. Raffreddare il telefono.";
             if(!MotorAIRecoveryMode.paused(c))
                 return "⛔ Pausa SOS necessaria. Nessun allenamento avviato.";
             if(MiniAiGoals.completedCount(c)!=10)
