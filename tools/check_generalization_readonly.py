@@ -42,8 +42,8 @@ for required in (
 assert 'MotorAIGeneralizationProbe.run(this)' in ui
 assert 'generalizationReport.getText()' in ui
 assert 'Esegui 20 prove nuove (senza allenamento)' in ui
-assert "versionCode = 38" in build
-assert 'versionName = "0.21.15-seed021r3r12"' in build
-assert "MotorAI Seed 021R3R12" in main
+assert "versionCode = 39" in build
+assert 'versionName = "0.21.16-seed021r3r13"' in build
+assert "MotorAI Seed 021R3R13" in main
 assert "Verify R3R9 twenty generalization probes are read only" in workflow
 print("PASS R3R9: 20 unique held-out-by-literal-string probes; safety guard, read-only UI and provenance")
