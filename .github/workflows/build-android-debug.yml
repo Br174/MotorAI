@@ -49,7 +49,7 @@ jobs:
           grep -q 'ACTION_OPEN_DOCUMENT' android/app/src/main/java/it/motorai/seed/MotorAIRecoveryActivity.java
           grep -q 'MOTORAI_RECOVERY_ZIP_V1' android/app/src/main/java/it/motorai/seed/MotorAIRecoveryStore.java
           grep -q 'r3-pre-restore-protected' android/app/src/main/java/it/motorai/seed/MotorAIRecoveryStore.java
-          grep -q 'versionCode = 26' android/app/build.gradle.kts
+          grep -q 'versionCode = 27' android/app/build.gradle.kts
 
       - name: Verify all ten Goal10 integration checks after full training and checkpoint reload
         id: goal10_integration_gate
