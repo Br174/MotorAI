@@ -334,6 +334,142 @@ Java_it_motorai_seed_MainActivity_nativeGenerate(JNIEnv* env, jclass, jstring pr
 
 
 
+/** R3R10: one-shot isolated experiment. No reference to g_engine for training
+ * or checkpoint output: g_engine is compared, never mutated.
+ * Extra training samples are added to TRAIN in shadow only.
+ * The 16 independent prompts below are not part of any training dataset.
+ */
+extern "C" JNIEXPORT jstring JNICALL
+Java_it_motorai_seed_MainActivity_nativePhase2ShadowExperiment(
+    JNIEnv* env, jclass, jstring basePath, jstring candidatePath) {
+    try {
+        std::lock_guard<std::mutex> guard(g_engine_call_mu);
+        std::string base=toString(env,basePath), dest=toString(env,candidatePath);
+        if(base.empty()||dest.empty()||base==dest)
+            return js(env,"{\\"status\\":\\"bad_path\\"}");
+        const std::string liveOriginal=g_engine.statusJson();
+        const std::string goalOriginal=goal10RawProfile(g_engine);
+        motorai::Engine shadow(174);
+        if(!shadow.loadCheckpoint(base))
+            return js(env,"{\\"status\\":\\"checkpoint_unreadable\\"}");
+        if(liveOriginal!=shadow.statusJson()||
+           goalOriginal!=goal10RawProfile(shadow))
+            return js(env,"{\\"status\\":\\"source_out_of_sync\\"}");
+
+        struct Probe { int model; const char* prompt; const char* expected; };
+        const Probe blind[] = {
+            {1,"un abbraccio e tanti saluti per te","saluto"},
+            {1,"un messaggio di benvenuto a questa conversazione","saluto"},
+            {1,"ti mando i miei saluti piu sinceri","saluto"},
+            {1,"buona serata e cordiali saluti","saluto"},
+            {1,"mi puoi rintracciare un saggio di geografia","ricerca"},
+            {1,"vorrei cercare pubblicazioni sui dinosauri","ricerca"},
+            {1,"recupera uno studio online sulle api","ricerca"},
+            {1,"fai una ricerca bibliografica sui fossili","ricerca"},
+            {7,"utilizza la calcolatrice per sommare due cifre","calculator"},
+            {7,"fai un addizione fra quindici e quarantuno","calculator"},
+            {7,"usa uno strumento di calcolo per otto piu cinque","calculator"},
+            {7,"voglio il totale della somma fra cinque e nove","calculator"},
+            {7,"consultiamo una pagina web di botanica","search"},
+            {7,"rintraccia informazioni online su faraday","search"},
+            {7,"ricordami quale colore ti ho detto","memory"},
+            {7,"facciamo una chiacchierata tranquilla","chat"}
+        };
+        const Probe rerun[] = {
+            {1,"mi aiuti a sommare tredici e sei","calcolo"},
+            {1,"un saluto a te motore","saluto"},
+            {1,"per favore trova un articolo sulla botanica","ricerca"},
+            {1,"puoi aprire il lettore musicale","azione"},
+            {7,"somma ventidue e trenta con la calcolatrice","calculator"},
+            {7,"trova online notizie sulle comete","search"}
+        };
+        auto hasClass=[](const std::string& json,const char* field,const char* expected){
+            return json.find(std::string("\\"")+field+"\\":\\""+expected+"\\"")!=std::string::npos;
+        };
+        auto score=[&](motorai::Engine& e,const Probe* arr,size_t size){
+            int n=0;
+            for(size_t i=0;i<size;++i){
+                std::string result=arr[i].model==1?e.classifyGoal1(arr[i].prompt):e.routeGoal7(arr[i].prompt);
+                if(hasClass(result,arr[i].model==1?"intent":"tool",arr[i].expected))++n;
+            }
+            return n;
+        };
+        const int blindBefore=score(shadow,blind,sizeof(blind)/sizeof(blind[0]));
+        const int oldBefore=score(shadow,rerun,sizeof(rerun)/sizeof(rerun[0]));
+        const auto v1Before=shadow.evaluateGoal1Validation(), t1Before=shadow.evaluateGoal1Test();
+        const auto v7Before=shadow.evaluateGoal7Validation(), t7Before=shadow.evaluateGoal7Test();
+        shadow.augmentPhase2TrainOnly();
+        const auto start=std::chrono::steady_clock::now();
+        int trained1=0,trained7=0;
+        std::string stop="step_limit";
+        // Early-stop decisions depend ONLY on original VAL (not on blind or old 20).
+        for(int i=0;i<50;++i){
+            if(std::chrono::duration<double>(
+                std::chrono::steady_clock::now()-start).count()>16.0){
+                stop="time_limit";break;
+            }
+            shadow.trainGoal1(20,24,0.017f);
+            shadow.trainGoal7(20,24,0.017f);
+            trained1+=20; trained7+=20;
+            auto a=shadow.evaluateGoal1Validation(), b=shadow.evaluateGoal7Validation();
+            if(!std::isfinite(a.loss)||!std::isfinite(b.loss)||
+               !std::isfinite(a.answer_accuracy)||!std::isfinite(b.answer_accuracy)){
+                stop="nonfinite";break;
+            }
+            if(a.answer_accuracy+0.00001<v1Before.answer_accuracy||
+               b.answer_accuracy+0.00001<v7Before.answer_accuracy){
+                stop="validation_regression";break;
+            }
+            if(a.loss>v1Before.loss+0.03f||b.loss>v7Before.loss+0.03f){
+                stop="validation_loss_regression";break;
+            }
+        }
+        const auto v1After=shadow.evaluateGoal1Validation(), t1After=shadow.evaluateGoal1Test();
+        const auto v7After=shadow.evaluateGoal7Validation(), t7After=shadow.evaluateGoal7Test();
+        const int blindAfter=score(shadow,blind,sizeof(blind)/sizeof(blind[0]));
+        const int oldAfter=score(shadow,rerun,sizeof(rerun)/sizeof(rerun[0]));
+        const bool testSafe=t1After.answer_accuracy+0.00001>=t1Before.answer_accuracy
+             &&t7After.answer_accuracy+0.00001>=t7Before.answer_accuracy;
+        const bool valSafe=v1After.answer_accuracy+0.00001>=v1Before.answer_accuracy
+             &&v7After.answer_accuracy+0.00001>=v7Before.answer_accuracy
+             &&v1After.loss<=v1Before.loss+0.03f
+             &&v7After.loss<=v7Before.loss+0.03f;
+        const bool blindBetter=blindAfter>blindBefore;
+        const bool oldNotWorse=oldAfter>=oldBefore;
+        const bool liveUnchanged=liveOriginal==g_engine.statusJson()
+             &&goalOriginal==goal10RawProfile(g_engine);
+        if(!liveUnchanged)return js(env,"{\\"status\\":\\"live_changed_STOP\\"}");
+        const bool eligible=valSafe&&testSafe&&blindBetter&&oldNotWorse
+             &&stop!="nonfinite"&&stop!="validation_regression"
+             &&stop!="validation_loss_regression";
+        if(eligible && !shadow.saveCheckpoint(dest))
+            return js(env,"{\\"status\\":\\"candidate_save_failed\\"}");
+        auto num=[](double x){return std::to_string(x);};
+        std::string json=std::string("{\\"status\\":\\"")+
+            (eligible?"candidate_saved":"candidate_not_qualified")
+            +"\\",\\"live_unchanged\\":true"
+            +",\\"candidate_saved\\":"+(eligible?"true":"false")
+            +",\\"blind_before\\":"+std::to_string(blindBefore)
+            +",\\"blind_after\\":"+std::to_string(blindAfter)
+            +",\\"r3r9_target_before\\":"+std::to_string(oldBefore)
+            +",\\"r3r9_target_after\\":"+std::to_string(oldAfter)
+            +",\\"goal1_validation_before\\":"+num(v1Before.answer_accuracy)
+            +",\\"goal1_validation_after\\":"+num(v1After.answer_accuracy)
+            +",\\"goal1_test_before\\":"+num(t1Before.answer_accuracy)
+            +",\\"goal1_test_after\\":"+num(t1After.answer_accuracy)
+            +",\\"goal7_validation_before\\":"+num(v7Before.answer_accuracy)
+            +",\\"goal7_validation_after\\":"+num(v7After.answer_accuracy)
+            +",\\"goal7_test_before\\":"+num(t7Before.answer_accuracy)
+            +",\\"goal7_test_after\\":"+num(t7After.answer_accuracy)
+            +",\\"goal1_steps\\":"+std::to_string(trained1)
+            +",\\"goal7_steps\\":"+std::to_string(trained7)
+            +",\\"stop\\":\\""+stop+"\\""
+            +",\\"heldout_non_degradation\\":"+(testSafe&&valSafe?"true":"false")
+            +"}";
+        return js(env,json);
+    }catch(...){return js(env,"{\\"status\\":\\"shadow_exception\\"}");}
+}
+
 extern "C" JNIEXPORT jstring JNICALL
 Java_it_motorai_seed_MainActivity_nativeGoal1Evaluate(JNIEnv* env, jclass) {
     std::lock_guard<std::mutex> g(g_engine_call_mu);
