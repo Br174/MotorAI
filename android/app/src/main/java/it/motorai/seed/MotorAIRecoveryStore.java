@@ -97,6 +97,49 @@ public final class MotorAIRecoveryStore {
         }
     }
 
+
+    /** Strict read-only checkpoint probe. Both current and previous are hashed
+     * including weights and metadata; no live brain or saved preferences updated.
+     */
+    private static String combinedFingerprint(File d)throws Exception{
+        String weights=sha(read(new File(d,"weights.bin"),MAX_FILE));
+        String meta=sha(read(new File(d,"checkpoint.json"),128*1024));
+        return sha((weights+":"+meta).getBytes(StandardCharsets.US_ASCII));
+    }
+    public static String probePrevious(Context c)throws Exception{
+        if(!MotorAIRecoveryMode.paused(c))
+            throw new IOException("Allenamento non in pausa: prova non consentita.");
+        synchronized(MotorAICheckpointStore.recoveryMutex()){
+            File previous=new File(root(c),"previous"),current=new File(root(c),"current");
+            Checkpoint info=scanDir("previous",previous);
+            if(!info.valid)throw new IOException("Previous non leggibile: "+info.detail);
+            String previousBefore=combinedFingerprint(previous);
+            String currentBefore=combinedFingerprint(current);
+            JSONObject result=new JSONObject(MainActivity.nativeProbeCheckpoint(previous.getAbsolutePath()));
+            if(!previousBefore.equals(combinedFingerprint(previous))
+                || !currentBefore.equals(combinedFingerprint(current)))
+                throw new IOException("I file sono cambiati durante il test: fermare il recupero.");
+            if(!result.optBoolean("live_unchanged",false))
+                throw new IOException("Stato del cervello attivo non confermato.");
+            if(!result.optBoolean("loaded",false))
+                return "PROVA ISOLATA NON SUPERATA. Previous non caricabile nel motore separato. "
+                    +"Checkpoint originali invariati: non effettuare ripristino.";
+            int level=result.getInt("level"),step=result.getInt("step");
+            if(level!=info.level||step!=info.step)
+                return "Risultato nativo diverso dall'ispettore: NON ripristinare.";
+            return "✅ PROVA ISOLATA RIUSCITA\n"
+                +"Previous aperto soltanto in un motore temporaneo.\n"
+                +"Livello L"+level+" · step "+step+"\n"
+                +"TEST livello: "+String.format(Locale.ITALY,"%.1f%%",
+                   100*result.getDouble("test_accuracy"))+"\n"
+                +"Memoria L3: "+String.format(Locale.ITALY,"%.1f%%",
+                   100*result.getDouble("retention_l3_accuracy"))+"\n"
+                +"Goal1 step: "+result.optInt("goal1_step",0)
+                +" (formato MOTAI008 antecedente ai dieci Goal).\n"
+                +"SHA-256 invariati. Nessun ripristino eseguito.";
+        }
+    }
+
     private static void put(ZipOutputStream zip,String name,byte[] bytes,JSONObject hashes)throws Exception{
         zip.putNextEntry(new ZipEntry(name));zip.write(bytes);zip.closeEntry();hashes.put(name,sha(bytes));
     }

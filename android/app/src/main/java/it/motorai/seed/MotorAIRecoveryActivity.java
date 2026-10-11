@@ -57,6 +57,12 @@ public final class MotorAIRecoveryActivity extends Activity {
         detail=text("",14,false);root.addView(detail);
         status=text("Nessuna modifica eseguita.",15,true);root.addView(status);
         button(root,"🔎 Esamina i checkpoint (sola lettura)",this::showState);
+        button(root,"🧪 Prova PREVIOUS isolata (sola lettura)",()->{
+            if(!MotorAIRecoveryMode.paused(this)){
+                status.setText("Allenamento non sospeso: prova bloccata.");return;
+            }
+            runIo(()->MotorAIRecoveryStore.probePrevious(this));
+        });
         button(root,"📦 Salva checkpoint ZIP fuori dall'app",()->{
             Intent i=new Intent(Intent.ACTION_CREATE_DOCUMENT);
             i.addCategory(Intent.CATEGORY_OPENABLE);i.setType("application/zip");

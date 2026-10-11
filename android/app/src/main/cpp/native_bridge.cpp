@@ -1,6 +1,7 @@
 #include <jni.h>
 #include <mutex>
 #include <string>
+#include <cmath>
 #include "motorai_core.h"
 
 namespace {
@@ -18,6 +19,32 @@ std::string toString(JNIEnv* env, jstring s) {
 jstring js(JNIEnv* env, const std::string& s) {
     return env->NewStringUTF(s.c_str());
 }
+}
+
+
+/** Read-only checkpoint validation in a separate Engine. Never loads into g_engine. */
+extern "C" JNIEXPORT jstring JNICALL
+Java_it_motorai_seed_MainActivity_nativeProbeCheckpoint(JNIEnv* env, jclass, jstring path) {
+    try {
+        std::lock_guard<std::mutex> guard(g_engine_call_mu);
+        const int liveStep=g_engine.globalStep(), liveLevel=g_engine.curriculumLevel();
+        motorai::Engine isolated(174);
+        const bool ok=isolated.loadCheckpoint(toString(env,path));
+        const bool unchanged=liveStep==g_engine.globalStep() && liveLevel==g_engine.curriculumLevel();
+        if(!ok||!unchanged)
+            return js(env,std::string("{\"loaded\":false,\"live_unchanged\":")
+                +(unchanged?"true":"false")+"}");
+        auto test=isolated.evaluateTest();
+        auto retained=isolated.evaluateRetentionL3();
+        if(!std::isfinite(test.answer_accuracy)||!std::isfinite(retained.answer_accuracy))
+            return js(env,"{\"loaded\":false,\"live_unchanged\":true}");
+        return js(env,std::string("{\"loaded\":true,\"live_unchanged\":true,\"level\":")
+            +std::to_string(isolated.curriculumLevel())
+            +",\"step\":"+std::to_string(isolated.globalStep())
+            +",\"test_accuracy\":"+std::to_string(test.answer_accuracy)
+            +",\"retention_l3_accuracy\":"+std::to_string(retained.answer_accuracy)
+            +",\"goal1_step\":"+std::to_string(isolated.goal1Step())+"}");
+    }catch(...){return js(env,"{\"loaded\":false,\"live_unchanged\":true}");}
 }
 
 extern "C" JNIEXPORT jstring JNICALL
