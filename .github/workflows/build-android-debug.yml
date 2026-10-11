@@ -25,6 +25,15 @@ jobs:
       - name: Checkout
         uses: actions/checkout@v6
 
+      - name: Verify Goal3 regression recovery without bypassing tests
+        id: goal3_recovery_gate
+        continue-on-error: true
+        run: |
+          g++ -std=c++20 -O2 -pthread -Iandroid/app/src/main/cpp \
+            tools/goal3_recovery_smoke.cpp android/app/src/main/cpp/motorai_core.cpp \
+            -o /tmp/motorai_goal3_recovery_smoke
+          /tmp/motorai_goal3_recovery_smoke
+
       - name: Verify native curriculum
         id: native_gate
         continue-on-error: true
@@ -60,15 +69,6 @@ jobs:
             tools/goal3_smoke.cpp android/app/src/main/cpp/motorai_core.cpp \
             -o /tmp/motorai_goal3_smoke
           /tmp/motorai_goal3_smoke
-
-      - name: Verify Goal3 regression recovery without bypassing tests
-        id: goal3_recovery_gate
-        continue-on-error: true
-        run: |
-          g++ -std=c++20 -O2 -pthread -Iandroid/app/src/main/cpp \
-            tools/goal3_recovery_smoke.cpp android/app/src/main/cpp/motorai_core.cpp \
-            -o /tmp/motorai_goal3_recovery_smoke
-          /tmp/motorai_goal3_recovery_smoke
 
       - name: Verify Mini-AI Goal4 reasoning benchmark
         id: goal4_gate
