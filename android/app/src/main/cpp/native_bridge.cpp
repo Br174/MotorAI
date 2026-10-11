@@ -348,6 +348,313 @@ Java_it_motorai_seed_MainActivity_nativeGenerate(JNIEnv* env, jclass, jstring pr
 /** R3R12: independent Goal1 selection; Goal7 balanced rehearsal and separate
  * per-category validation guard. Final TEST and fresh blind used only once.
  * Mutates ONLY local selected/trial Engine copies. No automatic promotion. */
+/** R3R14 isolated hard-negative paired supervised TRAIN; validation-only selection,
+ * dual-stage router evaluated but never applied to the live model. */
+extern "C" JNIEXPORT jstring JNICALL
+Java_it_motorai_seed_MainActivity_nativePhase2R3R14Experiment(
+    JNIEnv* env, jclass, jstring basePath, jstring candidatePath) {
+    try {
+        std::lock_guard<std::mutex> serial(g_engine_call_mu);
+        const std::string base=toString(env,basePath), dest=toString(env,candidatePath);
+        if(base.empty()||dest.empty()||base==dest) return js(env,R"({"status":"invalid_path"})");
+        const std::string liveStatus=g_engine.statusJson();
+        const std::string liveProfile=goal10RawProfile(g_engine);
+        motorai::Engine selected(174);
+        if(!selected.loadCheckpoint(base)) return js(env,R"({"status":"base_unreadable"})");
+        if(liveStatus!=selected.statusJson()||liveProfile!=goal10RawProfile(selected))
+            return js(env,R"({"status":"source_out_of_sync"})");
+
+        struct Case {int lane; const char* question; const char* label;};
+        // FRESH final holdout R3R12: never added to any train/val/test.
+        // NEW R3R14 final holdout. Evaluated only AFTER selecting shadow weights.
+        const Case blind[]={
+            {1,"ti porto un saluto affettuoso da lontano","saluto"},
+            {1,"una gioiosa stretta di mano per conoscerci","saluto"},
+            {1,"ben ritrovato ti mando un saluto speciale","saluto"},
+            {1,"rintraccia una pubblicazione sulla fauna marina","ricerca"},
+            {1,"trova materiali documentari sulle eclissi","ricerca"},
+            {1,"vorrei una ricerca esterna sui terremoti lunari","ricerca"},
+            {1,"quanto viene dalla somma di trenta e diciassette","calcolo"},
+            {1,"dimmi il risultato della divisione fra trenta e cinque","calcolo"},
+            {1,"che cosa significa l espressione energia cinetica","informazione"},
+            {1,"mi spieghi il funzionamento delle maree","informazione"},
+            {1,"apri la schermata dei documenti salvati","azione"},
+            {1,"avvia il lettore per ascoltare un podcast","azione"},
+            {7,"salve amico virtuale sono lieto di rivederti","chat"},
+            {7,"vorrei fare una conversazione con te oggi","chat"},
+            {7,"ti mando tanti auguri e saluti cordiali","chat"},
+            {7,"qual era il soprannome che ti avevo comunicato","memory"},
+            {7,"ricordi il luogo che avevo indicato ieri","memory"},
+            {7,"annota fra i ricordi la mia scelta preferita","memory"},
+            {7,"quanto fa ventisei meno quattordici","calculator"},
+            {7,"fammi un calcolo addizionando sedici e diciannove","calculator"},
+            {7,"calcola il totale del prodotto tra sei e otto","calculator"},
+            {7,"cerca una fonte esterna sul clima polare","search"},
+            {7,"reperisci su internet articoli sui minerali","search"},
+            {7,"voglio trovare online informazioni sulle stelle nane","search"}
+        };
+        // NEW R3R14 developmental validation guard, not part of final holdout.
+        const Case guard[]={
+            {7,"possiamo parlare dei nostri argomenti preferiti","chat"},
+            {7,"mi piacerebbe scambiare due parole con te","chat"},
+            {7,"ti invio i miei migliori saluti di benvenuto","chat"},
+            {7,"rispondi con un messaggio gentile per iniziare","chat"},
+            {7,"come trascorri la giornata amico mio","chat"},
+            {7,"vorrei conversare senza usare strumenti","chat"},
+            {7,"ricorda che preferisco ascoltare la musica","memory"},
+            {7,"quale dato hai registrato nella memoria","memory"},
+            {7,"memorizza il titolo del libro che sto leggendo","memory"},
+            {7,"recupera il mio ultimo ricordo personale","memory"},
+            {7,"puoi conservare la preferenza che ti ho detto","memory"},
+            {7,"dimmi che animale avevo nominato ieri","memory"},
+            {7,"mi calcoli la somma di diciassette e ventiquattro","calculator"},
+            {7,"esegui il conto di trenta diviso cinque","calculator"},
+            {7,"quanto viene sei per nove in matematica","calculator"},
+            {7,"dammi il totale di una sottrazione numerica","calculator"},
+            {7,"risolvi una semplice operazione con numeri","calculator"},
+            {7,"serve una calcolatrice per sommare due interi","calculator"},
+            {7,"cerca una risorsa online sugli uccelli rapaci","search"},
+            {7,"trova articoli esterni sulla flora di montagna","search"},
+            {7,"consultiamo il web per notizie sulle comete","search"},
+            {7,"rintraccia una ricerca su internet sui ghiacci","search"},
+            {7,"reperisci documenti da fonti in rete sulla musica","search"},
+            {7,"vorrei notizie aggiornate sulle spedizioni spaziali","search"}
+        };
+        // Goal1 supplemental developmental validation: five intents x three.
+        const Case intentGuard[]={
+            {1,"ti mando un saluto in questa bella mattinata","saluto"},
+            {1,"un cordialissimo benvenuto al mio assistente","saluto"},
+            {1,"volevo soltanto augurarti buona notte","saluto"},
+            {1,"descrivi come si formano le nuvole","informazione"},
+            {1,"mi spieghi che cosa vuol dire biodiversita","informazione"},
+            {1,"come funziona la circolazione del sangue","informazione"},
+            {1,"dammi la somma matematica di tredici e trenta","calcolo"},
+            {1,"quanto risulta dal prodotto di otto e dodici","calcolo"},
+            {1,"risolvi la sottrazione fra quaranta e nove","calcolo"},
+            {1,"rintraccia una fonte online sulla civetta","ricerca"},
+            {1,"cerca in rete un documento sul mare profondo","ricerca"},
+            {1,"trova una pubblicazione dedicata ai pesci","ricerca"},
+            {1,"apri l elenco delle canzoni salvate","azione"},
+            {1,"attiva il lettore audio sul telefono","azione"},
+            {1,"crea una nuova nota nel mio elenco","azione"}
+        };
+        // Retest six known R3R9 queries; replay is NOT a new blind benchmark.
+        const Case replay[]={
+            {1,"mi aiuti a sommare tredici e sei","calcolo"},
+            {1,"un saluto a te motore","saluto"},
+            {1,"per favore trova un articolo sulla botanica","ricerca"},
+            {1,"puoi aprire il lettore musicale","azione"},
+            {7,"somma ventidue e trenta con la calcolatrice","calculator"},
+            {7,"trova online notizie sulle comete","search"}
+        };
+        const auto score=[](motorai::Engine& e,const Case* a,size_t n){
+            int count=0;
+            for(size_t i=0;i<n;++i){
+                const std::string result=a[i].lane==1?e.classifyGoal1(a[i].question):e.routeGoal7(a[i].question);
+                const char*field=a[i].lane==1?"intent":"tool";
+                if(result.find(std::string("\"")+field+"\":\""+a[i].label+"\"")!=std::string::npos)++count;
+            }
+            return count;
+        };
+        const auto baseVal1=selected.evaluateGoal1Validation();
+        const auto baseVal7=selected.evaluateGoal7Validation();
+        const auto baseTest1=selected.evaluateGoal1Test();
+        const auto baseTest7=selected.evaluateGoal7Test();
+        struct GuardStats {
+            int byCategory[4]={0,0,0,0};
+            int total=0;
+        };
+        const auto guardStats=[&](motorai::Engine& e){
+            GuardStats counts;
+            for(const Case& q:guard){
+                const std::string response=e.routeGoal7(q.question);
+                int group=std::string(q.label)=="chat"?0:
+                          std::string(q.label)=="memory"?1:
+                          std::string(q.label)=="calculator"?2:3;
+                if(response.find(std::string("\"tool\":\"")+q.label+"\"")!=std::string::npos){
+                    ++counts.byCategory[group];
+                    ++counts.total;
+                }
+            }
+            return counts;
+        };
+        const auto guardNoWorse=[](const GuardStats& candidate,const GuardStats& baseline){
+            for(int k=0;k<4;++k)if(candidate.byCategory[k]<baseline.byCategory[k])return false;
+            return true;
+        };
+        struct IntentStats {int group[5]={0,0,0,0,0};int total=0;};
+        const auto intentStats=[&](motorai::Engine& e){
+            IntentStats out;
+            for(const Case& c:intentGuard){
+                std::string response=e.classifyGoal1(c.question);
+                int id=std::string(c.label)=="saluto"?0:
+                    std::string(c.label)=="informazione"?1:
+                    std::string(c.label)=="calcolo"?2:
+                    std::string(c.label)=="ricerca"?3:4;
+                if(response.find(std::string("\"intent\":\"")+c.label+"\"")!=std::string::npos){
+                    ++out.group[id];++out.total;
+                }
+            }
+            return out;
+        };
+        const auto intentsNoWorse=[](const IntentStats& now,const IntentStats& old){
+            for(int k=0;k<5;++k)if(now.group[k]<old.group[k])return false;
+            return true;
+        };
+        const IntentStats baseIntent=intentStats(selected);
+        IntentStats bestIntent=baseIntent;
+        const GuardStats baseGuard=guardStats(selected);
+        GuardStats bestGuard=baseGuard;
+        // Two-stage prototype: broad Goal1 intent, then Goal7 tool routing.
+        // This prototype does not modify the native live router or any weights.
+        const auto staged=[&](motorai::Engine& e,const Case* questions,size_t n){
+            int correct=0;
+            for(size_t i=0;i<n;++i){
+                if(questions[i].lane!=7)continue;
+                std::string intent=e.classifyGoal1(questions[i].question);
+                std::string raw=e.routeGoal7(questions[i].question);
+                std::string label;
+                if(intent.find("\"intent\":\"saluto\"")!=std::string::npos)label="chat";
+                else if(intent.find("\"intent\":\"ricerca\"")!=std::string::npos)label="search";
+                else if(intent.find("\"intent\":\"calcolo\"")!=std::string::npos)label="calculator";
+                else if(raw.find("\"tool\":\"memory\"")!=std::string::npos)label="memory";
+                else if(raw.find("\"tool\":\"search\"")!=std::string::npos)label="search";
+                else if(raw.find("\"tool\":\"calculator\"")!=std::string::npos)label="calculator";
+                else label="chat";
+                if(label==questions[i].label)++correct;
+            }
+            return correct;
+        };
+        const int stageBefore=staged(selected,blind,sizeof(blind)/sizeof(blind[0]));
+        const int beforeBlind=score(selected,blind,sizeof(blind)/sizeof(blind[0]));
+        const int beforeReplay=score(selected,replay,sizeof(replay)/sizeof(replay[0]));
+
+        // Independent selection by original validation only. A worse tentative
+        // step is discarded; the selected lane is never mutated in that case.
+        const float rates[]={0.003f,0.007f,0.012f};
+        const int budgets[]={10,20,40,80,160};
+        const auto started=std::chrono::steady_clock::now();
+        int bestSteps1=0,bestSteps7=0;
+        int attempts1=0,attempts7=0;
+        float bestAcc1=baseVal1.answer_accuracy,bestAcc7=baseVal7.answer_accuracy;
+        float bestLoss1=baseVal1.loss,bestLoss7=baseVal7.loss;
+        bool timedOut=false,nonfinite=false;
+        for(int lane: {1,7}) {
+            for(float rate:rates) {
+                if(timedOut)break;
+                motorai::Engine trial(174);
+                if(!trial.loadCheckpoint(base))return js(env,R"({"status":"trial_checkpoint_unreadable"})");
+                trial.augmentPhase2TrainOnly();
+                trial.augmentPhase2R3R14ContrastPairsTrainOnly();
+                if(lane==7)trial.augmentPhase2R3R12Goal7BalancedTrainOnly();
+                int last=0;
+                for(int budget:budgets){
+                    if(std::chrono::duration<double>(
+                        std::chrono::steady_clock::now()-started).count()>14.0){
+                        timedOut=true;break;
+                    }
+                    const int chunk=budget-last;
+                    if(lane==1){trial.trainGoal1(chunk,24,rate);attempts1+=chunk;}
+                    else {trial.trainGoal7(chunk,24,rate);attempts7+=chunk;}
+                    last=budget;
+                    const auto val=lane==1?trial.evaluateGoal1Validation():trial.evaluateGoal7Validation();
+                    if(!std::isfinite(val.loss)||!std::isfinite(val.answer_accuracy)){
+                        nonfinite=true;break;
+                    }
+                    if(lane==1){
+                        const auto candidateIntent=intentStats(trial);
+                        if(!intentsNoWorse(candidateIntent,baseIntent))break;
+                    }
+                    if(lane==7){
+                        const auto candidateGuard=guardStats(trial);
+                        // This is validation, NOT the held-out TEST or final blind.
+                        if(!guardNoWorse(candidateGuard,baseGuard))break;
+                    }
+                    const auto baseline=lane==1?baseVal1:baseVal7;
+                    if(val.answer_accuracy+0.000001f<baseline.answer_accuracy ||
+                       val.loss>baseline.loss+0.01f) break; // rollback by discarding trial
+                    float &bestAcc=lane==1?bestAcc1:bestAcc7;
+                    float &bestLoss=lane==1?bestLoss1:bestLoss7;
+                    const bool originalValBetter=val.answer_accuracy>bestAcc+0.00001f
+                         ||(val.answer_accuracy+0.00001f>=bestAcc && val.loss+0.00002f<bestLoss);
+                    const IntentStats currentIntent=lane==1?intentStats(trial):baseIntent;
+                    const GuardStats currentGuard=lane==7?guardStats(trial):baseGuard;
+                    const bool better=lane==1?
+                          (currentIntent.total>bestIntent.total ||
+                            (currentIntent.total==bestIntent.total && originalValBetter)):
+                          (currentGuard.total>bestGuard.total ||
+                            (currentGuard.total==bestGuard.total && originalValBetter));
+                    if(better){
+                        if(lane==1){selected.adoptIsolatedGoal1(trial);bestSteps1=budget;bestIntent=currentIntent;}
+                        else {selected.adoptIsolatedGoal7(trial);bestSteps7=budget;bestGuard=currentGuard;}
+                        bestAcc=val.answer_accuracy;bestLoss=val.loss;
+                    }
+                }
+                if(nonfinite)break;
+            }
+            if(nonfinite)break;
+        }
+
+        // Following evaluations occur ONCE after validation-only selection.
+        const auto finalVal1=selected.evaluateGoal1Validation();
+        const auto finalVal7=selected.evaluateGoal7Validation();
+        const auto finalTest1=selected.evaluateGoal1Test();
+        const auto finalTest7=selected.evaluateGoal7Test();
+        const int afterBlind=score(selected,blind,sizeof(blind)/sizeof(blind[0]));
+        const int stageAfter=staged(selected,blind,sizeof(blind)/sizeof(blind[0]));
+        const int afterReplay=score(selected,replay,sizeof(replay)/sizeof(replay[0]));
+        const IntentStats finalIntent=intentStats(selected);
+        const bool intentGuardRetained=intentsNoWorse(finalIntent,baseIntent);
+        const GuardStats finalGuard=guardStats(selected);
+        const bool guardRetained=guardNoWorse(finalGuard,baseGuard);
+        const bool valNoLoss=finalVal1.answer_accuracy+0.000001f>=baseVal1.answer_accuracy
+          &&finalVal7.answer_accuracy+0.000001f>=baseVal7.answer_accuracy
+          &&finalVal1.loss<=baseVal1.loss+0.01f
+          &&finalVal7.loss<=baseVal7.loss+0.01f;
+        const bool testsNoLoss=finalTest1.answer_accuracy+0.000001f>=baseTest1.answer_accuracy
+          &&finalTest7.answer_accuracy+0.000001f>=baseTest7.answer_accuracy;
+        if(liveStatus!=g_engine.statusJson()||liveProfile!=goal10RawProfile(g_engine))
+            return js(env,R"({"status":"live_changed_STOP"})");
+
+        const bool improvement=afterBlind>beforeBlind && afterReplay>=beforeReplay;
+        const bool qualified=!nonfinite && intentGuardRetained && guardRetained && valNoLoss && testsNoLoss && improvement && stageAfter>=stageBefore
+             &&(bestSteps1>0||bestSteps7>0);
+        if(qualified && !selected.saveCheckpoint(dest))
+            return js(env,R"({"status":"candidate_save_failed"})");
+        std::ostringstream out;
+        out<<"{\"status\":\""<<(qualified?"candidate_saved":"candidate_rejected")
+          <<"\",\"candidate_saved\":"<<(qualified?"true":"false")
+          <<",\"live_unchanged\":true,\"nonfinite\":"<<(nonfinite?"true":"false")
+          <<",\"intent_guard_no_regression\":"<<(intentGuardRetained?"true":"false")
+          <<",\"intent_guard_before\":"<<baseIntent.total<<",\"intent_guard_after\":"<<finalIntent.total
+          <<",\"stage_before\":"<<stageBefore<<",\"stage_after\":"<<stageAfter
+          <<",\"guard_no_regression\":"<<(guardRetained?"true":"false")
+          <<",\"guard_chat_before\":"<<baseGuard.byCategory[0]<<",\"guard_chat_after\":"<<finalGuard.byCategory[0]
+          <<",\"guard_memory_before\":"<<baseGuard.byCategory[1]<<",\"guard_memory_after\":"<<finalGuard.byCategory[1]
+          <<",\"guard_calculator_before\":"<<baseGuard.byCategory[2]<<",\"guard_calculator_after\":"<<finalGuard.byCategory[2]
+          <<",\"guard_search_before\":"<<baseGuard.byCategory[3]<<",\"guard_search_after\":"<<finalGuard.byCategory[3]
+          <<",\"validation_no_regression\":"<<(valNoLoss?"true":"false")
+          <<",\"test_no_regression\":"<<(testsNoLoss?"true":"false")
+          <<",\"blind_before\":"<<beforeBlind<<",\"blind_after\":"<<afterBlind
+          <<",\"r3r9_target_before\":"<<beforeReplay<<",\"r3r9_target_after\":"<<afterReplay
+          <<",\"goal1_validation_before\":"<<baseVal1.answer_accuracy
+          <<",\"goal1_validation_after\":"<<finalVal1.answer_accuracy
+          <<",\"goal1_test_before\":"<<baseTest1.answer_accuracy
+          <<",\"goal1_test_after\":"<<finalTest1.answer_accuracy
+          <<",\"goal7_validation_before\":"<<baseVal7.answer_accuracy
+          <<",\"goal7_validation_after\":"<<finalVal7.answer_accuracy
+          <<",\"goal7_test_before\":"<<baseTest7.answer_accuracy
+          <<",\"goal7_test_after\":"<<finalTest7.answer_accuracy
+          <<",\"goal1_best_steps\":"<<bestSteps1<<",\"goal7_best_steps\":"<<bestSteps7
+          <<",\"goal1_search_steps\":"<<attempts1<<",\"goal7_search_steps\":"<<attempts7
+          <<",\"time_limit\":"<<(timedOut?"true":"false")
+          <<",\"active\":"<<liveProfile<<",\"candidate\":"<<goal10RawProfile(selected)<<"}";
+        return js(env,out.str());
+    }catch(...){return js(env,R"({"status":"r3r14_exception"})");}
+}
+
+
+
 extern "C" JNIEXPORT jstring JNICALL
 Java_it_motorai_seed_MainActivity_nativePhase2R3R12Experiment(
     JNIEnv* env, jclass, jstring basePath, jstring candidatePath) {
