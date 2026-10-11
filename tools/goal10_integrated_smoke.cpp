@@ -63,6 +63,42 @@ int main(){
         std::pair{[&](){return (double)e.evaluateGoal9Validation().answer_accuracy;},
                   [&](){return (double)e.evaluateGoal9Test().answer_accuracy;}});
     if(!trained){std::cerr<<"FAIL: one prerequisite goal did not meet independent validation/test\n";return 70;}
+
+    // Exercise the same bounded, targeted extra training used by the Android
+    // Goal10 recovery worker. This is training, not a bypass of certification.
+    int goal1Extra=0, goal3Extra=0, goal9Extra=0;
+    auto g1Ready=[&](){
+        auto x=e.classifyGoal1("quanto fa sette piu otto");
+        return has(x,"intent","calcolo") && number(x,"confidence")>=0.50;
+    };
+    auto g3Ready=[&](){
+        auto x=e.classifyGoal3("come mi chiamo");
+        return has(x,"action","recall") && has(x,"slot","name")
+            && number(x,"confidence")>=0.50;
+    };
+    auto g9Ready=[&](){
+        auto a=e.reviewGoal9("quanto fa diciassette piu quattro","17 + 4 = 22");
+        auto b=e.reviewGoal9("chi e michelangelo","Michelangelo era un artista. Fonte: Wikipedia");
+        return has(a,"check","calculation") && number(a,"confidence")>=0.50
+            && has(b,"check","source") && number(b,"confidence")>=0.50;
+    };
+    while(!g1Ready() && goal1Extra<160) { e.trainGoal1(20,24,0.08f); goal1Extra++; }
+    while(!g3Ready() && goal3Extra<160) { e.trainGoal3(20,24,0.02f); goal3Extra++; }
+    while(!g9Ready() && goal9Extra<160) { e.trainGoal9(20,24,0.08f); goal9Extra++; }
+    bool independentAfter=
+          e.evaluateGoal1Test().answer_accuracy>=.90f
+       && e.evaluateGoal2Test().answer_accuracy>=.55f
+       && e.evaluateGoal3Test().answer_accuracy>=.90f
+       && e.evaluateGoal4Test().answer_accuracy>=.90f
+       && e.evaluateGoal5Test().answer_accuracy>=.90f
+       && e.evaluateGoal6Test().answer_accuracy>=.90f
+       && e.evaluateGoal7Test().answer_accuracy>=.90f
+       && e.evaluateGoal8Test().answer_accuracy>=.90f
+       && e.evaluateGoal9Test().answer_accuracy>=.90f;
+    std::cout<<"Recovery extra chunks: Goal1="<<goal1Extra
+             <<" Goal3="<<goal3Extra<<" Goal9="<<goal9Extra
+             <<" independent-tests="<<(independentAfter?"PASS":"FAIL")<<"\n";
+    if(!g1Ready() || !g3Ready() || !g9Ready() || !independentAfter) return 74;
     const std::string dir="/tmp/motorai_goal10_integrated_174";
     std::filesystem::remove_all(dir);
     if(!e.saveCheckpoint(dir))return 71;
