@@ -20,6 +20,7 @@ public class DiagnosticsActivity extends Activity {
     private TextView goal10Inspector;
     private TextView goal1Trial;
     private TextView candidateCertification;
+    private TextView promotionOutcome;
 
     private TextView text(String value, int sp, boolean bold) {
         TextView v = new TextView(this);
@@ -72,6 +73,10 @@ public class DiagnosticsActivity extends Activity {
         root.addView(candidateCertification);
         Button candidateCheck = button("🔐 Verifica candidata Goal 10 (sola lettura)");
         root.addView(candidateCheck);
+        promotionOutcome=text("Promozione reale non ancora eseguita. Pausa SOS richiesta.",14,false);
+        root.addView(promotionOutcome);
+        Button promote=button("🛡️ Promuovi candidata Goal 10 (protetto)");
+        root.addView(promote);
 
         root.addView(text("⚠️ Problemi rilevati", 18, true));
         failures = text("Nessun problema registrato.", 14, false);
@@ -126,8 +131,27 @@ public class DiagnosticsActivity extends Activity {
                 });
             },"Goal10-Candidate-ReadOnly").start();
         });
+        promote.setOnClickListener(v -> new android.app.AlertDialog.Builder(this)
+            .setTitle("Promozione protetta Goal 10")
+            .setMessage("Applica la candidata solo dopo ricertificazione sul modello attivo. Richiede pausa SOS, conserva CURRENT originale e PREVIOUS, non esegue allenamento. Il backup SOS esterno va mantenuto.")
+            .setNegativeButton("Annulla", (dialog, which) -> {})
+            .setPositiveButton("Verifica e applica", (dialog, which) -> {
+                promote.setEnabled(false);
+                promotionOutcome.setText("Transazione protetta in corso…");
+                new Thread(() -> {
+                    String result;
+                    try { result=MotorAIGoal10Promotion.promote(this); }
+                    catch(Throwable t) { result="⛔ Promozione interrotta: "+t.getClass().getSimpleName(); }
+                    final String shown=result;
+                    runOnUiThread(() -> {
+                        promotionOutcome.setText(shown);
+                        promote.setEnabled(true);
+                        load();
+                    });
+                },"Goal10-Guarded-Promotion").start();
+            }).show());
         copy.setOnClickListener(v -> {
-            String all = report.getText().toString() + "\n\n🎯 GOAL 10\n" + goal10Details.getText() + "\n\n🔬 PROVE REALI NON INVASIVE\n" + goal10Inspector.getText() + "\n\n🧪 PROVA GOAL1 ISOLATA\n" + goal1Trial.getText() + "\n\n🔐 CERTIFICAZIONE CANDIDATA ISOLATA\n" + candidateCertification.getText() + "\n\n⚠️ PROBLEMI RILEVATI\n" +
+            String all = report.getText().toString() + "\n\n🎯 GOAL 10\n" + goal10Details.getText() + "\n\n🔬 PROVE REALI NON INVASIVE\n" + goal10Inspector.getText() + "\n\n🧪 PROVA GOAL1 ISOLATA\n" + goal1Trial.getText() + "\n\n🔐 CERTIFICAZIONE CANDIDATA ISOLATA\n" + candidateCertification.getText() + "\n\n🛡️ PROMOZIONE REALE R3R8\n" + promotionOutcome.getText() + "\n\n⚠️ PROBLEMI RILEVATI\n" +
                     failures.getText().toString();
             ClipboardManager cm = (ClipboardManager) getSystemService(Context.CLIPBOARD_SERVICE);
             cm.setPrimaryClip(ClipData.newPlainText("Diagnostica MotorAI", all));
@@ -152,6 +176,7 @@ public class DiagnosticsActivity extends Activity {
         report.setText(body);
         failures.setText(errs.isEmpty() ? "✅ Nessun problema registrato." : errs);
         SharedPreferences gp=getSharedPreferences("motorai_goal10_cert", MODE_PRIVATE);
+        promotionOutcome.setText(MotorAIGoal10Promotion.last(this));
         goal10Details.setText(gp.getString("last_evidence",
                 "Goal 10 non ancora sottoposto a certificazione integrata."));
     }
