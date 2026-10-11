@@ -124,6 +124,8 @@ public:
     void augmentPhase2TrainOnly();
     // R3R12: only shadow Goal7 train gets balanced rehearsal; never update val/test.
     void augmentPhase2R3R12Goal7BalancedTrainOnly();
+    // R3R14: hard-negative paired TRAIN examples, shadow engines only. No original splits changed.
+    void augmentPhase2R3R14ContrastPairsTrainOnly();
     // R3R11: copy only one trained lane from an isolated Engine.
     // Caller must never use the global live Engine as destination.
     void adoptIsolatedGoal1(const Engine& source);
