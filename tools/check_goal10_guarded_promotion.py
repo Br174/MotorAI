@@ -48,6 +48,6 @@ assert "MotorAIGoal10Promotion.promote(this)" in ui
 assert "MotorAIGoal10Promotion.recoverInterrupted(this)" in main
 assert main.index("MotorAIGoal10Promotion.recoverInterrupted(this)") < main.index("UI_ACTIVE.set(true)")
 assert "paused\",true" in recovery
-assert "versionCode = 39" in gradle and 'versionName = "0.21.16-seed021r3r13"' in gradle
+assert "versionCode = 40" in gradle and 'versionName = "0.21.17-seed021r3r14"' in gradle
 assert "Verify guarded Goal10 promotion contract" in wf
 print("PASS R3R8 guarded promotion, anti-regression, SOS pause, rollback, crash recovery and in-place update")
