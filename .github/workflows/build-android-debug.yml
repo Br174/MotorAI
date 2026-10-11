@@ -13,7 +13,7 @@ permissions:
   contents: read
 
 concurrency:
-  group: motorai-android-${{ github.ref }}
+  group: motorai-android-r3r11-${{ github.ref }}
   cancel-in-progress: true
 
 jobs:
