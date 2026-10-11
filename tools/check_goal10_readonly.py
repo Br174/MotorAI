@@ -25,6 +25,14 @@ assert inspector.count("nativeGoal9Review(")==2
 assert "MiniAiGoal10Inspector.inspect()" in ui
 assert "new Thread(() ->" in ui
 assert "goal10Inspector.getText()" in ui
+hold=Path("android/app/src/main/java/it/motorai/seed/MotorAIGoal10DiagnosticHold.java").read_text()
+foreground=Path("android/app/src/main/java/it/motorai/seed/MainActivity.java").read_text()
+background=Path("android/app/src/main/java/it/motorai/seed/MotorAIBackgroundJobService.java").read_text()
+assert "MiniAiGoals.completedCount(c) == 9" in hold
+assert "MiniAiGoals.percent(c, 9) < 100" in hold
+assert "MotorAIGoal10DiagnosticHold.shouldHold(this)" in foreground
+assert "MotorAIGoal10DiagnosticHold.shouldHold(this)" in background
+assert "return false;" in background
 assert "versionCode = 30" in gradle
 assert 'versionName = "0.21.7-seed021r3r4"' in gradle
 print("PASS: 10 Goal10 probes match cert criteria; no writes, no training, device UI wired.")

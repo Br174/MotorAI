@@ -187,6 +187,10 @@ public class MotorAIBackgroundJobService extends JobService {
         }
 
         if (level >= 5 && l5Accepted && MiniAiGoals.completedCount(this) < 10) {
+            if (MotorAIGoal10DiagnosticHold.shouldHold(this)) {
+                sendCurrentTelemetry("background_goal10_readonly_hold");
+                return false;
+            }
             long wakeStarted = System.currentTimeMillis();
             for (int chunk = 0; chunk < MAX_CHUNKS_PER_WAKE; chunk++) {
                 if (MainActivity.isUiActive()) {

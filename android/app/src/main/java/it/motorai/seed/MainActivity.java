@@ -668,6 +668,10 @@ public class MainActivity extends Activity {
     }
 
     private void startAutoTraining() {
+        if (MotorAIGoal10DiagnosticHold.shouldHold(this)) {
+            state.setText("Stato: Goal 10 in pausa protettiva per diagnosi R3R4, training bloccato");
+            return;
+        }
         if (MotorAIRecoveryMode.paused(this)) {
             state.setText("Stato: pausa SOS — aprire Recupero checkpoint nel menu");
             return;
