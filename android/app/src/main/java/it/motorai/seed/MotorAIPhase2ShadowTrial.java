@@ -332,4 +332,108 @@ public final class MotorAIPhase2ShadowTrial {
         }
     }
 
+
+    public static String runR3R14(Context c) {
+        if(!BUSY.compareAndSet(false,true))
+            return "⏳ Un'altra copia isolata è già in allenamento: attendere.";
+        try {
+            if(!MotorAIRecoveryMode.paused(c))
+                return "⛔ Pausa SOS necessaria. Nessun allenamento avviato.";
+            if(MiniAiGoals.completedCount(c)!=10)
+                return "⛔ Goal 1–10 devono essere completati. Nessun allenamento.";
+            synchronized(MotorAICheckpointStore.recoveryMutex()) {
+                File original=new File(c.getFilesDir(),"motorai/checkpoints/current");
+                File candidate=new File(c.getFilesDir(),"motorai/phase2-r3r14-shadow-candidate");
+                if(candidate.exists())
+                    return "⛔ Una copia R3R14 esiste già; nessuna sovrascrittura. Invia la diagnostica.";
+                String before=allProtected(c);
+                String originalNative=MainActivity.nativeStatus();
+                JSONObject result=new JSONObject(MainActivity.nativePhase2R3R14Experiment(
+                    original.getAbsolutePath(),candidate.getAbsolutePath()));
+                if(!before.equals(allProtected(c)) ||
+                   !originalNative.equals(MainActivity.nativeStatus()) ||
+                   !MotorAIRecoveryMode.paused(c) ||
+                   MiniAiGoals.completedCount(c)!=10)
+                    return "🛑 Variazione dei dati principali rilevata: STOP e NON promuovere.";
+                StringBuilder msg=new StringBuilder("🛡️ R3R14 · PROVA INDIPENDENTE IN COPIA");
+                msg.append("\nStato: ").append(result.optString("status","unknown"));
+                msg.append("\nGoal 1 miglior punto: ").append(result.optInt("goal1_best_steps",0)).append(" passi");
+                msg.append("\nGoal 7 miglior punto: ").append(result.optInt("goal7_best_steps",0)).append(" passi");
+                msg.append("\nPassi esplorati nelle copie: ")
+                    .append(result.optInt("goal1_search_steps",0)).append(" / ")
+                    .append(result.optInt("goal7_search_steps",0));
+                msg.append("\n24 NUOVE PROVE FINALI: ")
+                    .append(result.optInt("blind_before",0)).append("/24 → ")
+                    .append(result.optInt("blind_after",0)).append("/24");
+                msg.append("\nRiconoscimento a due passaggi (Goal7, 12 casi): ")
+                   .append(result.optInt("stage_before",0)).append("/12 → ")
+                   .append(result.optInt("stage_after",0)).append("/12");
+                msg.append("\nValidazione supplementare Goal1 (15 casi): ")
+                   .append(result.optInt("intent_guard_before",0)).append("/15 → ")
+                   .append(result.optInt("intent_guard_after",0)).append("/15");
+                msg.append("\nGuardia Goal1: ")
+                   .append(result.optBoolean("intent_guard_no_regression",false)?"✅":"❌");
+                msg.append("\nSei casi R3R9 (controllo regressioni): ")
+                    .append(result.optInt("r3r9_target_before",0)).append("/6 → ")
+                    .append(result.optInt("r3r9_target_after",0)).append("/6");
+                msg.append("\nGoal 1 validation: ")
+                    .append(percentage(result,"goal1_validation_before")).append(" → ")
+                    .append(percentage(result,"goal1_validation_after"));
+                msg.append("\nGoal 1 TEST: ")
+                    .append(percentage(result,"goal1_test_before")).append(" → ")
+                    .append(percentage(result,"goal1_test_after"));
+                msg.append("\nGoal 7 validation: ")
+                    .append(percentage(result,"goal7_validation_before")).append(" → ")
+                    .append(percentage(result,"goal7_validation_after"));
+                msg.append("\nGoal 7 TEST: ")
+                    .append(percentage(result,"goal7_test_before")).append(" → ")
+                    .append(percentage(result,"goal7_test_after"));
+                msg.append("\nVALIDAZIONE SUPPLEMENTARE Goal7 (per categoria):");
+                for(String group:new String[]{"chat","memory","calculator","search"}){
+                    msg.append("\n  ").append(group).append(": ")
+                       .append(result.optInt("guard_"+group+"_before",0)).append("/6 → ")
+                       .append(result.optInt("guard_"+group+"_after",0)).append("/6");
+                }
+                msg.append("\nGuardia per categoria: ")
+                    .append(result.optBoolean("guard_no_regression",false)?"✅":"❌");
+                msg.append("\nNon regressione Validation: ")
+                    .append(result.optBoolean("validation_no_regression",false)?"✅":"❌");
+                msg.append("\nNon regressione TEST: ")
+                    .append(result.optBoolean("test_no_regression",false)?"✅":"❌");
+                msg.append("\nLimite tempo raggiunto: ")
+                    .append(result.optBoolean("time_limit",false)?"SÌ":"NO");
+                boolean ready=result.optBoolean("candidate_saved",false)
+                    &&result.optBoolean("live_unchanged",false)
+                    &&result.optBoolean("validation_no_regression",false)
+                    &&result.optBoolean("guard_no_regression",false)
+                    &&result.optBoolean("intent_guard_no_regression",false)
+                    &&result.optBoolean("test_no_regression",false);
+                if(ready) {
+                    fingerprint(candidate);
+                    JSONObject probe=new JSONObject(MainActivity.nativeProbeCheckpoint(candidate.getAbsolutePath()));
+                    ready=probe.optBoolean("loaded",false)
+                        &&probe.optBoolean("live_unchanged",false)
+                        &&tenChecks(result.getJSONObject("active"))
+                        &&tenChecks(result.getJSONObject("candidate"))
+                        &&otherCapabilitiesUnchanged(
+                            result.getJSONObject("active"),result.getJSONObject("candidate"));
+                }
+                if(!before.equals(allProtected(c)) ||
+                   !originalNative.equals(MainActivity.nativeStatus()))
+                    return "🛑 CHECKPOINT/STATO PRINCIPALE NON CONFERMATO. Nessun ripristino automatico.";
+                if(ready) msg.append("\n✅ Copia R3R14 qualificata e conservata separatamente.");
+                else msg.append("\n⛔ Copia NON qualificata: nessuna promozione.");
+                msg.append("\nI 10 Goal del modello principale restano invariati.");
+                msg.append("\nPausa SOS attiva; CURRENT/PREVIOUS e backup SOS non modificati.");
+                msg.append("\nLa classificazione a due passaggi è un prototipo di valutazione: non modifica il router attivo. Nessuna promozione automatica.");
+                return msg.toString();
+            }
+        } catch(Throwable e) {
+            return "🛑 Prova R3R14 interrotta: "+e.getClass().getSimpleName()
+                +". Nessun ripristino automatico; inviare la diagnostica.";
+        } finally {
+            BUSY.set(false);
+        }
+    }
+
 }
