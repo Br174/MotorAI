@@ -202,8 +202,9 @@ public class MainActivity extends Activity {
     @Override protected void onCreate(Bundle stateBundle) {
         super.onCreate(stateBundle);
         UI_ACTIVE.set(true);
+        if (MotorAIRecoveryMode.paused(this)) MotorAIRecoveryMode.pause(this);
         MotorAIBackgroundJobService.schedule(this);
-        setTitle("MotorAI Seed 021R2");
+        setTitle("MotorAI Seed 021R3");
 
         ScrollView scroll = new ScrollView(this);
         LinearLayout root = new LinearLayout(this);
@@ -217,7 +218,7 @@ public class MainActivity extends Activity {
         header.setGravity(Gravity.CENTER_VERTICAL);
         LinearLayout headerText = new LinearLayout(this);
         headerText.setOrientation(LinearLayout.VERTICAL);
-        headerText.addView(compact("🧠 MotorAI Seed 021R2", 26, true));
+        headerText.addView(compact("🧠 MotorAI Seed 021R3", 26, true));
         headerText.addView(compact("AI locale · Apprendimento continuo", 14, false));
         header.addView(headerText, new LinearLayout.LayoutParams(0,
                 LinearLayout.LayoutParams.WRAP_CONTENT, 1));
@@ -343,12 +344,15 @@ public class MainActivity extends Activity {
         menu.setOnClickListener(v -> {
             PopupMenu p = new PopupMenu(this, menu);
             p.getMenu().add("Diagnostica");
+            p.getMenu().add("🛟 Recupero checkpoint");
             p.getMenu().add("Aggiorna stato");
             p.getMenu().add("Salva checkpoint");
             p.getMenu().add("Avvia/Riprendi training");
             p.setOnMenuItemClickListener(item -> {
                 String title = item.getTitle().toString();
                 if ("Diagnostica".equals(title)) diagnostics.performClick();
+                else if ("🛟 Recupero checkpoint".equals(title))
+                    startActivity(new Intent(this, MotorAIRecoveryActivity.class));
                 else if ("Aggiorna stato".equals(title)) test.performClick();
                 else if ("Salva checkpoint".equals(title)) save.performClick();
                 else if ("Avvia/Riprendi training".equals(title)) autoTrain.performClick();
@@ -491,7 +495,8 @@ public class MainActivity extends Activity {
             refreshMetrics();
             boolean l5AcceptedNow = getSharedPreferences("motorai_evolution", MODE_PRIVATE)
                     .getBoolean("l5_accepted", false);
-            if (resumed && nativeCurriculum() >= 5 && l5AcceptedNow
+            if (!MotorAIRecoveryMode.paused(this)
+                    && resumed && nativeCurriculum() >= 5 && l5AcceptedNow
                     && MiniAiGoals.completedCount(this) < 10) {
                 ui(() -> {
                     if (!training.get()) startAutoTraining();
@@ -501,6 +506,10 @@ public class MainActivity extends Activity {
     }
 
     private void startTraining() {
+        if (MotorAIRecoveryMode.paused(this)) {
+            state.setText("Stato: pausa SOS — salvare prima i checkpoint");
+            return;
+        }
         if (!training.compareAndSet(false, true)) return;
         state.setText("Stato: training adattivo in corso…");
         learn.setEnabled(false);
@@ -654,6 +663,10 @@ public class MainActivity extends Activity {
     }
 
     private void startAutoTraining() {
+        if (MotorAIRecoveryMode.paused(this)) {
+            state.setText("Stato: pausa SOS — aprire Recupero checkpoint nel menu");
+            return;
+        }
         if (!training.compareAndSet(false, true)) return;
         autoTrain.setEnabled(false);
         learn.setEnabled(false);

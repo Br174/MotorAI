@@ -9,6 +9,7 @@ import java.io.File;
 public final class MotorAICheckpointStore {
     private static final Object LOCK = new Object();
     private MotorAICheckpointStore() {}
+    static Object recoveryMutex() { return LOCK; }
 
     private static File root(Context c) {
         return new File(c.getFilesDir(), "motorai/checkpoints");

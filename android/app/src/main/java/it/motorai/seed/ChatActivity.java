@@ -57,6 +57,7 @@ public class ChatActivity extends Activity {
 
     @Override protected void onCreate(Bundle state) {
         super.onCreate(state);
+        if (MotorAIRecoveryMode.paused(this)) MotorAIRecoveryMode.pause(this);
 
         LinearLayout root = new LinearLayout(this);
         root.setOrientation(LinearLayout.VERTICAL);
@@ -125,8 +126,10 @@ public class ChatActivity extends Activity {
 
     @Override protected void onResume() {
         super.onResume();
-        MotorAIBackgroundJobService.schedule(this);
-        if (brainReady) MotorAIBackgroundJobService.scheduleKick(getApplicationContext());
+        if (!MotorAIRecoveryMode.paused(this)) {
+            MotorAIBackgroundJobService.schedule(this);
+            if (brainReady) MotorAIBackgroundJobService.scheduleKick(getApplicationContext());
+        }
         refreshStatus();
     }
 

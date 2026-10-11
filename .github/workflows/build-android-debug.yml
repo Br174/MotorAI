@@ -25,6 +25,18 @@ jobs:
       - name: Checkout
         uses: actions/checkout@v6
 
+      - name: Verify emergency recovery safety invariants
+        id: emergency_gate
+        run: |
+          grep -q 'MotorAIRecoveryMode.paused(this)' android/app/src/main/java/it/motorai/seed/MainActivity.java
+          grep -q 'MotorAIRecoveryMode.paused(this)' android/app/src/main/java/it/motorai/seed/MotorAIBackgroundJobService.java
+          grep -q 'recoveryMutex' android/app/src/main/java/it/motorai/seed/MotorAICheckpointStore.java
+          grep -q 'ACTION_CREATE_DOCUMENT' android/app/src/main/java/it/motorai/seed/MotorAIRecoveryActivity.java
+          grep -q 'ACTION_OPEN_DOCUMENT' android/app/src/main/java/it/motorai/seed/MotorAIRecoveryActivity.java
+          grep -q 'MOTORAI_RECOVERY_ZIP_V1' android/app/src/main/java/it/motorai/seed/MotorAIRecoveryStore.java
+          grep -q 'r3-pre-restore-protected' android/app/src/main/java/it/motorai/seed/MotorAIRecoveryStore.java
+          grep -q 'versionCode = 26' android/app/build.gradle.kts
+
       - name: Verify all ten Goal10 integration checks after full training and checkpoint reload
         id: goal10_integration_gate
         continue-on-error: false
@@ -225,10 +237,10 @@ jobs:
         run: gradle --no-daemon --stacktrace assembleDebug
 
       - name: Upload MotorAI APK
-        if: steps.native_gate.outcome == 'success' && steps.goal1_gate.outcome == 'success' && steps.goal2_gate.outcome == 'success' && steps.goal3_gate.outcome == 'success' && steps.goal3_recovery_gate.outcome == 'success' && steps.goal4_gate.outcome == 'success' && steps.goal5_gate.outcome == 'success' && steps.goal6_gate.outcome == 'success' && steps.goal7_gate.outcome == 'success' && steps.goal8_gate.outcome == 'success' && steps.goal9_gate.outcome == 'success' && steps.goal10_gate.outcome == 'success' && steps.goal10_integration_gate.outcome == 'success' && steps.android_build.outcome == 'success'
+        if: steps.native_gate.outcome == 'success' && steps.goal1_gate.outcome == 'success' && steps.goal2_gate.outcome == 'success' && steps.goal3_gate.outcome == 'success' && steps.goal3_recovery_gate.outcome == 'success' && steps.goal4_gate.outcome == 'success' && steps.goal5_gate.outcome == 'success' && steps.goal6_gate.outcome == 'success' && steps.goal7_gate.outcome == 'success' && steps.goal8_gate.outcome == 'success' && steps.goal9_gate.outcome == 'success' && steps.goal10_gate.outcome == 'success' && steps.goal10_integration_gate.outcome == 'success' && steps.emergency_gate.outcome == 'success' && steps.android_build.outcome == 'success'
         uses: actions/upload-artifact@v6
         with:
-          name: MotorAI-Seed021R2-debug
+          name: MotorAI-Seed021R3-debug
           path: android/app/build/outputs/apk/debug/*.apk
           if-no-files-found: error
           retention-days: 14
@@ -249,6 +261,7 @@ jobs:
           echo "Mini-AI Goal9: ${{ steps.goal9_gate.outcome }}"
           echo "Mini-AI Goal10: ${{ steps.goal10_gate.outcome }}"
           echo "Goal10 integration: ${{ steps.goal10_integration_gate.outcome }}"
+          echo "Emergency safety: ${{ steps.emergency_gate.outcome }}"
           echo "Android build: ${{ steps.android_build.outcome }}"
           test "${{ steps.native_gate.outcome }}" = "success"
           test "${{ steps.goal1_gate.outcome }}" = "success"
@@ -263,6 +276,7 @@ jobs:
           test "${{ steps.goal9_gate.outcome }}" = "success"
           test "${{ steps.goal10_gate.outcome }}" = "success"
           test "${{ steps.goal10_integration_gate.outcome }}" = "success"
+          test "${{ steps.emergency_gate.outcome }}" = "success"
           test "${{ steps.android_build.outcome }}" = "success"
 
 # Seed004 final validation trigger

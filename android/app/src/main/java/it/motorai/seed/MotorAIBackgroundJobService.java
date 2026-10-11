@@ -27,6 +27,7 @@ public class MotorAIBackgroundJobService extends JobService {
     private volatile Thread worker;
 
     public static void schedule(Context context) {
+        if (MotorAIRecoveryMode.paused(context)) return;
         try {
             JobScheduler scheduler = (JobScheduler) context.getSystemService(Context.JOB_SCHEDULER_SERVICE);
             if (scheduler == null) return;
@@ -44,6 +45,7 @@ public class MotorAIBackgroundJobService extends JobService {
     }
 
     public static void scheduleKick(Context context) {
+        if (MotorAIRecoveryMode.paused(context)) return;
         try {
             JobScheduler scheduler = (JobScheduler) context.getSystemService(Context.JOB_SCHEDULER_SERVICE);
             if (scheduler == null) return;
@@ -61,6 +63,7 @@ public class MotorAIBackgroundJobService extends JobService {
     }
 
     @Override public boolean onStartJob(JobParameters params) {
+        if (MotorAIRecoveryMode.paused(this)) return false;
         worker = new Thread(() -> {
             boolean reschedule = false;
             boolean continueSoon = false;
@@ -86,6 +89,7 @@ public class MotorAIBackgroundJobService extends JobService {
     }
 
     private boolean runOneCycle() throws Exception {
+        if (MotorAIRecoveryMode.paused(this)) return false;
         SharedPreferences runtime = getSharedPreferences("motorai_runtime", MODE_PRIVATE);
         if (MainActivity.isUiActive()) {
             sendCurrentTelemetry("background_skip_ui_active");
