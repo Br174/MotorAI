@@ -38,7 +38,7 @@ assert "MotorAIGoal10DiagnosticHold.shouldHold(context)" in java
 assert "MiniAiGoals.updateGoal(" not in java
 assert "MiniAiAssistantCycle.evaluate(" not in java
 assert "nativeLoadCheckpoint(" not in java
-assert "MotorAIGoal10CandidateInspector.inspect(this)" in ui
+assert "MiniAiGoal10CandidateInspector.inspect(this)" in ui
 assert "candidateCertification.getText()" in ui
 assert "nativeGoal10CandidateCompare(String candidatePath)" in main
 assert "versionCode = 33" in Path("android/app/build.gradle.kts").read_text()
