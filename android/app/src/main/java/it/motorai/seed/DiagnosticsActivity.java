@@ -23,6 +23,7 @@ public class DiagnosticsActivity extends Activity {
     private TextView promotionOutcome;
     private TextView generalizationReport;
     private TextView phase2ShadowReport;
+    private TextView phase2ErrorAuditReport;
 
     private TextView text(String value, int sp, boolean bold) {
         TextView v = new TextView(this);
@@ -90,6 +91,14 @@ public class DiagnosticsActivity extends Activity {
         root.addView(phase2ShadowReport);
         Button phase2Shadow=button("🛡️ R3R12 · Verifica Goal1 e Goal7 protetti");
         root.addView(phase2Shadow);
+        phase2Shadow.setEnabled(false);
+        phase2ShadowReport.setText("R3R12 già collaudata: 15/20 invariato, candidata respinta. Non ripetere l'allenamento.");
+
+        root.addView(text("🔬 R3R13 — Analisi errori per domanda (sola lettura)",18,true));
+        phase2ErrorAuditReport=text("50 verifiche storiche: mostra atteso, effettivo, confidenza e tipi di errore. Non esegue allenamento.",14,false);
+        root.addView(phase2ErrorAuditReport);
+        Button audit=button("🔍 R3R13 · Analizza le 50 risposte (senza allenare)");
+        root.addView(audit);
 
         root.addView(text("⚠️ Problemi rilevati", 18, true));
         failures = text("Nessun problema registrato.", 14, false);
@@ -177,6 +186,20 @@ public class DiagnosticsActivity extends Activity {
                 });
             },"MotorAI-20-Unseen-ReadOnly").start();
         });
+        audit.setOnClickListener(v -> {
+            audit.setEnabled(false);
+            phase2ErrorAuditReport.setText("Analisi delle 50 risposte del modello principale in corso…");
+            new Thread(() -> {
+                String result;
+                try {result=MotorAIPhase2ErrorAudit.run(this);}
+                catch(Throwable e){result="⛔ R3R13 interrotta: "+e.getClass().getSimpleName();}
+                final String shown=result;
+                runOnUiThread(() -> {
+                    phase2ErrorAuditReport.setText(shown);
+                    audit.setEnabled(true);
+                });
+            },"MotorAI-R3R13-ReadOnly-Audit").start();
+        });
         phase2Shadow.setOnClickListener(v -> {
             new android.app.AlertDialog.Builder(this)
                 .setTitle("R3R12 — Goal7 protetto per categoria")
@@ -195,7 +218,7 @@ public class DiagnosticsActivity extends Activity {
                 }).show();
         });
         copy.setOnClickListener(v -> {
-            String all = report.getText().toString() + "\n\n🎯 GOAL 10\n" + goal10Details.getText() + "\n\n🔬 PROVE REALI NON INVASIVE\n" + goal10Inspector.getText() + "\n\n🧪 PROVA GOAL1 ISOLATA\n" + goal1Trial.getText() + "\n\n🔐 CERTIFICAZIONE CANDIDATA ISOLATA\n" + candidateCertification.getText() + "\n\n🛡️ PROMOZIONE REALE R3R8\n" + promotionOutcome.getText() + "\n\n🧭 FASE 2 · 20 PROVE NUOVE\n" + generalizationReport.getText() + "\n\n🛡️ R3R12 COPIE PROTETTE\n" + phase2ShadowReport.getText() + "\n\n⚠️ PROBLEMI RILEVATI\n" +
+            String all = report.getText().toString() + "\n\n🎯 GOAL 10\n" + goal10Details.getText() + "\n\n🔬 PROVE REALI NON INVASIVE\n" + goal10Inspector.getText() + "\n\n🧪 PROVA GOAL1 ISOLATA\n" + goal1Trial.getText() + "\n\n🔐 CERTIFICAZIONE CANDIDATA ISOLATA\n" + candidateCertification.getText() + "\n\n🛡️ PROMOZIONE REALE R3R8\n" + promotionOutcome.getText() + "\n\n🧭 FASE 2 · 20 PROVE NUOVE\n" + generalizationReport.getText() + "\n\n🛡️ R3R12 COPIE PROTETTE\n" + phase2ShadowReport.getText() + "\n\n🔬 R3R13 ANALISI ERRORI (SOLA LETTURA)\n" + phase2ErrorAuditReport.getText() + "\n\n⚠️ PROBLEMI RILEVATI\n" +
                     failures.getText().toString();
             ClipboardManager cm = (ClipboardManager) getSystemService(Context.CLIPBOARD_SERVICE);
             cm.setPrimaryClip(ClipData.newPlainText("Diagnostica MotorAI", all));
