@@ -211,7 +211,7 @@ public class MainActivity extends Activity {
         UI_ACTIVE.set(true);
         if (MotorAIRecoveryMode.paused(this)) MotorAIRecoveryMode.pause(this);
         MotorAIBackgroundJobService.schedule(this);
-        setTitle("MotorAI Seed 021R3R12");
+        setTitle("MotorAI Seed 021R3R13");
 
         ScrollView scroll = new ScrollView(this);
         LinearLayout root = new LinearLayout(this);
@@ -225,7 +225,7 @@ public class MainActivity extends Activity {
         header.setGravity(Gravity.CENTER_VERTICAL);
         LinearLayout headerText = new LinearLayout(this);
         headerText.setOrientation(LinearLayout.VERTICAL);
-        headerText.addView(compact("🧠 MotorAI Seed 021R3R12", 26, true));
+        headerText.addView(compact("🧠 MotorAI Seed 021R3R13", 26, true));
         headerText.addView(compact("AI locale · Apprendimento continuo", 14, false));
         header.addView(headerText, new LinearLayout.LayoutParams(0,
                 LinearLayout.LayoutParams.WRAP_CONTENT, 1));
