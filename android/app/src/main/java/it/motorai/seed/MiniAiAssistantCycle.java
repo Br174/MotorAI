@@ -1,6 +1,7 @@
 package it.motorai.seed;
 
 import android.content.Context;
+import android.content.SharedPreferences;
 
 import org.json.JSONObject;
 
@@ -18,8 +19,13 @@ public final class MiniAiAssistantCycle {
         public final int total;
         public final int percent;
         public final String evidence;
+        public final List<String> failed;
 
         Result(int passed, int total, String evidence) {
+            this(passed,total,evidence,new ArrayList<>());
+        }
+        Result(int passed, int total, String evidence, List<String> missing) {
+            this.failed = new ArrayList<>(missing);
             this.passed = passed;
             this.total = total;
             this.percent = total <= 0 ? 0 : Math.max(0, Math.min(100,
@@ -112,7 +118,13 @@ public final class MiniAiAssistantCycle {
                 ok.size(), ok.size() + ko.size(),
                 ok.isEmpty() ? "nessuna" : join(ok),
                 ko.isEmpty() ? "" : " · Da correggere: " + join(ko));
-        return new Result(ok.size(), ok.size() + ko.size(), evidence);
+        SharedPreferences p=context.getSharedPreferences("motorai_goal10_cert", Context.MODE_PRIVATE);
+        p.edit().putString("last_evidence", evidence)
+                .putString("failed_names", join(ko))
+                .putInt("passed", ok.size())
+                .putInt("total", ok.size()+ko.size())
+                .putLong("updated_ms", System.currentTimeMillis()).apply();
+        return new Result(ok.size(), ok.size() + ko.size(), evidence, ko);
     }
 
     private interface Check { boolean run() throws Exception; }
