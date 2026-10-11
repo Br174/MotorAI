@@ -2620,6 +2620,18 @@ void Engine::augmentPhase2TrainOnly() {
     for (const auto& x:router) impl_->goal7data.train.push_back({x.second,x.first});
 }
 
+/** R3R11 Pollicino: independent snapshot swaps on shadow objects only. */
+void Engine::adoptIsolatedGoal1(const Engine& source){
+    if(this==&source)return;
+    std::scoped_lock lock(impl_->mu, source.impl_->mu);
+    impl_->goal1=source.impl_->goal1;
+}
+void Engine::adoptIsolatedGoal7(const Engine& source){
+    if(this==&source)return;
+    std::scoped_lock lock(impl_->mu, source.impl_->mu);
+    impl_->goal7=source.impl_->goal7;
+}
+
 Metrics Engine::evaluateGoal1Train(){ std::lock_guard<std::mutex> g(impl_->mu); return impl_->goal1.evaluate(impl_->goal1data.train); }
 Metrics Engine::evaluateGoal1Validation(){ std::lock_guard<std::mutex> g(impl_->mu); return impl_->goal1.evaluate(impl_->goal1data.val); }
 Metrics Engine::evaluateGoal1Test(){ std::lock_guard<std::mutex> g(impl_->mu); return impl_->goal1.evaluate(impl_->goal1data.test); }
