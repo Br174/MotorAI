@@ -141,9 +141,9 @@ public final class MotorAIGoal10Promotion {
                 JSONObject foundationBefore=new JSONObject(MainActivity.nativeEvaluate());
                 if(!copyCheckpoint(current,original))
                     return "⛔ Backup dell'originale non completato. Nessun peso applicato.";
+                loadedCandidate=true; // rollback even when native loading reports partial failure
                 if(!MainActivity.nativeLoadCheckpoint(candidate.getAbsolutePath()))
                     throw new Exception("candidate_load_failed");
-                loadedCandidate=true;
                 JSONObject foundationAfter=new JSONObject(MainActivity.nativeEvaluate());
                 if(!sameFoundation(foundationBefore,foundationAfter))
                     throw new Exception("foundation_regression");
