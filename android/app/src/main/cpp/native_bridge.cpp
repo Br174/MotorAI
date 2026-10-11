@@ -1,6 +1,8 @@
 #include <jni.h>
 #include <mutex>
 #include <string>
+#include <sstream>
+#include <initializer_list>
 #include <cmath>
 #include <chrono>
 #include "motorai_core.h"
