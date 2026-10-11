@@ -13,7 +13,7 @@ permissions:
   contents: read
 
 concurrency:
-  group: motorai-android-r3r11-${{ github.ref }}
+  group: motorai-android-r3r12-${{ github.ref }}
   cancel-in-progress: true
 
 jobs:
@@ -25,13 +25,18 @@ jobs:
       - name: Checkout
         uses: actions/checkout@v6
 
-      - name: Set R3R11 Android version without rewriting signing configuration
+      - name: Set R3R12 Android version without rewriting signing configuration
         run: |
           set -euo pipefail
-          sed -i 's/versionCode = 35/versionCode = 37/' android/app/build.gradle.kts
-          sed -i 's/0.21.12-seed021r3r9/0.21.14-seed021r3r11/' android/app/build.gradle.kts
-          grep -q 'versionCode = 37' android/app/build.gradle.kts
-          grep -q '0.21.14-seed021r3r11' android/app/build.gradle.kts
+          sed -i 's/versionCode = 35/versionCode = 38/' android/app/build.gradle.kts
+          sed -i 's/0.21.12-seed021r3r9/0.21.15-seed021r3r12/' android/app/build.gradle.kts
+          grep -q 'versionCode = 38' android/app/build.gradle.kts
+          grep -q '0.21.15-seed021r3r12' android/app/build.gradle.kts
+
+      - name: Verify R3R12 Goal7 category guard and independent holdout
+        id: phase2_r3r12_gate
+        run: |
+          python3 tools/check_phase2_shadow_r3r12.py
 
       - name: Verify R3R11 independent-best no regression
         id: phase2_best_gate
@@ -109,7 +114,7 @@ jobs:
           grep -q 'ACTION_OPEN_DOCUMENT' android/app/src/main/java/it/motorai/seed/MotorAIRecoveryActivity.java
           grep -q 'MOTORAI_RECOVERY_ZIP_V1' android/app/src/main/java/it/motorai/seed/MotorAIRecoveryStore.java
           grep -q 'r3-pre-restore-protected' android/app/src/main/java/it/motorai/seed/MotorAIRecoveryStore.java
-          grep -q 'versionCode = 37' android/app/build.gradle.kts
+          grep -q 'versionCode = 38' android/app/build.gradle.kts
 
       - name: Verify all ten Goal10 integration checks after full training and checkpoint reload
         id: goal10_integration_gate
@@ -311,36 +316,36 @@ jobs:
         run: gradle --no-daemon --stacktrace assembleDebug
 
       - name: Package complete APK and source ZIP
-        id: package_r3r11
+        id: package_r3r12
         if: steps.android_build.outcome == 'success'
         run: |
           set -euo pipefail
           apk=android/app/build/outputs/apk/debug/app-debug.apk
           test -s "$apk"
           mkdir -p dist
-          cp "$apk" dist/MotorAI-Seed021R3R11.apk
-          (cd dist && sha256sum MotorAI-Seed021R3R11.apk > R3R11_SHA256.txt)
-          (cd dist && zip -q -j MotorAI-Seed021R3R11-completo.zip MotorAI-Seed021R3R11.apk R3R11_SHA256.txt)
-          zip -qr dist/MotorAI-Seed021R3R11-completo.zip \
+          cp "$apk" dist/MotorAI-Seed021R3R12.apk
+          (cd dist && sha256sum MotorAI-Seed021R3R12.apk > R3R12_SHA256.txt)
+          (cd dist && zip -q -j MotorAI-Seed021R3R12-completo.zip MotorAI-Seed021R3R12.apk R3R12_SHA256.txt)
+          zip -qr dist/MotorAI-Seed021R3R12-completo.zip \
              android/app/src android/app/build.gradle.kts android/build.gradle.kts \
-             android/settings.gradle.kts tools MOTORAI_SEED021R3R11_REPORT.md
-          unzip -tq dist/MotorAI-Seed021R3R11-completo.zip
-          sha256sum dist/MotorAI-Seed021R3R11-completo.zip
+             android/settings.gradle.kts tools MOTORAI_SEED021R3R12_REPORT.md
+          unzip -tq dist/MotorAI-Seed021R3R12-completo.zip
+          sha256sum dist/MotorAI-Seed021R3R12-completo.zip
 
       - name: Upload complete MotorAI ZIP
-        if: steps.package_r3r11.outcome == 'success' && steps.goal10_promotion_gate.outcome == 'success'
+        if: steps.package_r3r12.outcome == 'success' && steps.goal10_promotion_gate.outcome == 'success'
         uses: actions/upload-artifact@v6
         with:
-          name: MotorAI-Seed021R3R11-completo
-          path: dist/MotorAI-Seed021R3R11-completo.zip
+          name: MotorAI-Seed021R3R12-completo
+          path: dist/MotorAI-Seed021R3R12-completo.zip
           if-no-files-found: error
           retention-days: 14
 
       - name: Upload MotorAI APK
-        if: steps.native_gate.outcome == 'success' && steps.goal1_gate.outcome == 'success' && steps.goal2_gate.outcome == 'success' && steps.goal3_gate.outcome == 'success' && steps.goal3_recovery_gate.outcome == 'success' && steps.goal4_gate.outcome == 'success' && steps.goal5_gate.outcome == 'success' && steps.goal6_gate.outcome == 'success' && steps.goal7_gate.outcome == 'success' && steps.goal8_gate.outcome == 'success' && steps.goal9_gate.outcome == 'success' && steps.goal10_gate.outcome == 'success' && steps.goal10_integration_gate.outcome == 'success' && steps.emergency_gate.outcome == 'success' && steps.checkpoint_header_gate.outcome == 'success' && steps.isolated_checkpoint_gate.outcome == 'success' && steps.manual_menu_gate.outcome == 'success' && steps.goal10_readonly_gate.outcome == 'success' && steps.goal1_shadow_gate.outcome == 'success' && steps.candidate_integrated_gate.outcome == 'success' && steps.goal10_promotion_gate.outcome == 'success' && steps.phase2_probe_gate.outcome == 'success' && steps.phase2_shadow_gate.outcome == 'success' && steps.phase2_best_gate.outcome == 'success' && steps.package_r3r11.outcome == 'success' && steps.android_build.outcome == 'success'
+        if: steps.native_gate.outcome == 'success' && steps.goal1_gate.outcome == 'success' && steps.goal2_gate.outcome == 'success' && steps.goal3_gate.outcome == 'success' && steps.goal3_recovery_gate.outcome == 'success' && steps.goal4_gate.outcome == 'success' && steps.goal5_gate.outcome == 'success' && steps.goal6_gate.outcome == 'success' && steps.goal7_gate.outcome == 'success' && steps.goal8_gate.outcome == 'success' && steps.goal9_gate.outcome == 'success' && steps.goal10_gate.outcome == 'success' && steps.goal10_integration_gate.outcome == 'success' && steps.emergency_gate.outcome == 'success' && steps.checkpoint_header_gate.outcome == 'success' && steps.isolated_checkpoint_gate.outcome == 'success' && steps.manual_menu_gate.outcome == 'success' && steps.goal10_readonly_gate.outcome == 'success' && steps.goal1_shadow_gate.outcome == 'success' && steps.candidate_integrated_gate.outcome == 'success' && steps.goal10_promotion_gate.outcome == 'success' && steps.phase2_probe_gate.outcome == 'success' && steps.phase2_shadow_gate.outcome == 'success' && steps.phase2_best_gate.outcome == 'success' && steps.phase2_r3r12_gate.outcome == 'success' && steps.package_r3r12.outcome == 'success' && steps.android_build.outcome == 'success'
         uses: actions/upload-artifact@v6
         with:
-          name: MotorAI-Seed021R3R11-debug
+          name: MotorAI-Seed021R3R12-debug
           path: android/app/build/outputs/apk/debug/*.apk
           if-no-files-found: error
           retention-days: 14
@@ -372,7 +377,8 @@ jobs:
           echo "Phase2 novel requests: ${{ steps.phase2_probe_gate.outcome }}"
           echo "Phase2 isolated shadow: ${{ steps.phase2_shadow_gate.outcome }}"
           echo "R3R11 independent-best: ${{ steps.phase2_best_gate.outcome }}"
-          echo "Complete ZIP package: ${{ steps.package_r3r11.outcome }}"
+          echo "R3R12 guarded Goal7: ${{ steps.phase2_r3r12_gate.outcome }}"
+          echo "Complete ZIP package: ${{ steps.package_r3r12.outcome }}"
           echo "Android build: ${{ steps.android_build.outcome }}"
           test "${{ steps.native_gate.outcome }}" = "success"
           test "${{ steps.goal1_gate.outcome }}" = "success"
@@ -398,7 +404,8 @@ jobs:
           test "${{ steps.phase2_probe_gate.outcome }}" = "success"
           test "${{ steps.phase2_shadow_gate.outcome }}" = "success"
           test "${{ steps.phase2_best_gate.outcome }}" = "success"
-          test "${{ steps.package_r3r11.outcome }}" = "success"
+          test "${{ steps.phase2_r3r12_gate.outcome }}" = "success"
+          test "${{ steps.package_r3r12.outcome }}" = "success"
           test "${{ steps.android_build.outcome }}" = "success"
 
 # Seed004 final validation trigger
