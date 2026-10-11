@@ -205,7 +205,7 @@ public class MainActivity extends Activity {
         UI_ACTIVE.set(true);
         if (MotorAIRecoveryMode.paused(this)) MotorAIRecoveryMode.pause(this);
         MotorAIBackgroundJobService.schedule(this);
-        setTitle("MotorAI Seed 021R3R2");
+        setTitle("MotorAI Seed 021R3R3");
 
         ScrollView scroll = new ScrollView(this);
         LinearLayout root = new LinearLayout(this);
@@ -219,7 +219,7 @@ public class MainActivity extends Activity {
         header.setGravity(Gravity.CENTER_VERTICAL);
         LinearLayout headerText = new LinearLayout(this);
         headerText.setOrientation(LinearLayout.VERTICAL);
-        headerText.addView(compact("🧠 MotorAI Seed 021R3R2", 26, true));
+        headerText.addView(compact("🧠 MotorAI Seed 021R3R3", 26, true));
         headerText.addView(compact("AI locale · Apprendimento continuo", 14, false));
         header.addView(headerText, new LinearLayout.LayoutParams(0,
                 LinearLayout.LayoutParams.WRAP_CONTENT, 1));
@@ -348,6 +348,8 @@ public class MainActivity extends Activity {
             p.getMenu().add("🛟 Recupero checkpoint");
             p.getMenu().add("Aggiorna stato");
             p.getMenu().add("Salva checkpoint");
+            p.getMenu().add("🧠 Impara manualmente");
+            p.getMenu().add("⏸️ Pausa allenamento");
             p.getMenu().add("Avvia/Riprendi training");
             p.setOnMenuItemClickListener(item -> {
                 String title = item.getTitle().toString();
@@ -356,6 +358,8 @@ public class MainActivity extends Activity {
                     startActivity(new Intent(this, MotorAIRecoveryActivity.class));
                 else if ("Aggiorna stato".equals(title)) test.performClick();
                 else if ("Salva checkpoint".equals(title)) save.performClick();
+                else if ("🧠 Impara manualmente".equals(title)) learn.performClick();
+                else if ("⏸️ Pausa allenamento".equals(title)) pause.performClick();
                 else if ("Avvia/Riprendi training".equals(title)) autoTrain.performClick();
                 return true;
             });
