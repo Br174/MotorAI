@@ -2620,6 +2620,43 @@ void Engine::augmentPhase2TrainOnly() {
     for (const auto& x:router) impl_->goal7data.train.push_back({x.second,x.first});
 }
 
+/** R3R12: restore representative balance and old-class rehearsal on shadow TRAIN only.
+ * Four labels (chat, memory, calculator, search) each receive a complementary set.
+ * Validation, supplemental validation, final TEST, and blind questions are disjoint.
+ */
+void Engine::augmentPhase2R3R12Goal7BalancedTrainOnly(){
+    std::lock_guard<std::mutex> lock(impl_->mu);
+    const std::pair<int,const char*> samples[]={
+        {0,"come posso iniziare una conversazione con te"},
+        {0,"sono felice di poterti salutare"},
+        {0,"buona giornata mio assistente"},
+        {0,"mi piacerebbe fare quattro chiacchiere"},
+        {0,"ti mando un semplice messaggio amichevole"},
+        {0,"rispondi al mio saluto"},
+        {0,"ti auguro una serata serena"},
+        {0,"ciao amico digitale come procede"},
+        {1,"ricorda che il mio animale si chiama neve"},
+        {1,"quale dato personale ti avevo fornito"},
+        {1,"memorizza il soprannome che uso"},
+        {1,"puoi rammentare la mia preferenza"},
+        {1,"salva nella memoria il colore che scelgo"},
+        {1,"recupera dalla memoria il mio nome"},
+        {1,"che cosa hai ricordato del mio animale"},
+        {1,"conserva che abito vicino al mare"},
+        {2,"calcola la somma di ventuno e tredici"},
+        {2,"mi serve uno strumento aritmetico"},
+        {2,"effettua il prodotto di tre per sette"},
+        {2,"quanto da la sottrazione fra sedici e quattro"},
+        {3,"recupera da internet una ricerca sui pianeti"},
+        {3,"trova fonti documentali sulla geologia"},
+        {3,"esegui una ricerca online sui mammiferi"},
+        {3,"consulta un sito informativo sui mari"},
+        {3,"reperisci notizie web sui satelliti"},
+        {3,"cerca una pubblicazione sullo spazio"}
+    };
+    for(const auto& x:samples)impl_->goal7data.train.push_back({x.second,x.first});
+}
+
 /** R3R11 Pollicino: independent snapshot swaps on shadow objects only. */
 void Engine::adoptIsolatedGoal1(const Engine& source){
     if(this==&source)return;
