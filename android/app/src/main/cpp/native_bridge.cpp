@@ -346,15 +346,15 @@ Java_it_motorai_seed_MainActivity_nativePhase2ShadowExperiment(
         std::lock_guard<std::mutex> guard(g_engine_call_mu);
         std::string base=toString(env,basePath), dest=toString(env,candidatePath);
         if(base.empty()||dest.empty()||base==dest)
-            return js(env,"{\\"status\\":\\"bad_path\\"}");
+            return js(env,"{\"status\":\"bad_path\"}");
         const std::string liveOriginal=g_engine.statusJson();
         const std::string goalOriginal=goal10RawProfile(g_engine);
         motorai::Engine shadow(174);
         if(!shadow.loadCheckpoint(base))
-            return js(env,"{\\"status\\":\\"checkpoint_unreadable\\"}");
+            return js(env,"{\"status\":\"checkpoint_unreadable\"}");
         if(liveOriginal!=shadow.statusJson()||
            goalOriginal!=goal10RawProfile(shadow))
-            return js(env,"{\\"status\\":\\"source_out_of_sync\\"}");
+            return js(env,"{\"status\":\"source_out_of_sync\"}");
 
         struct Probe { int model; const char* prompt; const char* expected; };
         const Probe blind[] = {
@@ -384,7 +384,7 @@ Java_it_motorai_seed_MainActivity_nativePhase2ShadowExperiment(
             {7,"trova online notizie sulle comete","search"}
         };
         auto hasClass=[](const std::string& json,const char* field,const char* expected){
-            return json.find(std::string("\\"")+field+"\\":\\""+expected+"\\"")!=std::string::npos;
+            return json.find(std::string("\"")+field+"\":\""+expected+"\"")!=std::string::npos;
         };
         auto score=[&](motorai::Engine& e,const Probe* arr,size_t size){
             int n=0;
@@ -438,36 +438,36 @@ Java_it_motorai_seed_MainActivity_nativePhase2ShadowExperiment(
         const bool oldNotWorse=oldAfter>=oldBefore;
         const bool liveUnchanged=liveOriginal==g_engine.statusJson()
              &&goalOriginal==goal10RawProfile(g_engine);
-        if(!liveUnchanged)return js(env,"{\\"status\\":\\"live_changed_STOP\\"}");
+        if(!liveUnchanged)return js(env,"{\"status\":\"live_changed_STOP\"}");
         const bool eligible=valSafe&&testSafe&&blindBetter&&oldNotWorse
              &&stop!="nonfinite"&&stop!="validation_regression"
              &&stop!="validation_loss_regression";
         if(eligible && !shadow.saveCheckpoint(dest))
-            return js(env,"{\\"status\\":\\"candidate_save_failed\\"}");
+            return js(env,"{\"status\":\"candidate_save_failed\"}");
         auto num=[](double x){return std::to_string(x);};
-        std::string json=std::string("{\\"status\\":\\"")+
+        std::string json=std::string("{\"status\":\"")+
             (eligible?"candidate_saved":"candidate_not_qualified")
-            +"\\",\\"live_unchanged\\":true"
-            +",\\"candidate_saved\\":"+(eligible?"true":"false")
-            +",\\"blind_before\\":"+std::to_string(blindBefore)
-            +",\\"blind_after\\":"+std::to_string(blindAfter)
-            +",\\"r3r9_target_before\\":"+std::to_string(oldBefore)
-            +",\\"r3r9_target_after\\":"+std::to_string(oldAfter)
-            +",\\"goal1_validation_before\\":"+num(v1Before.answer_accuracy)
-            +",\\"goal1_validation_after\\":"+num(v1After.answer_accuracy)
-            +",\\"goal1_test_before\\":"+num(t1Before.answer_accuracy)
-            +",\\"goal1_test_after\\":"+num(t1After.answer_accuracy)
-            +",\\"goal7_validation_before\\":"+num(v7Before.answer_accuracy)
-            +",\\"goal7_validation_after\\":"+num(v7After.answer_accuracy)
-            +",\\"goal7_test_before\\":"+num(t7Before.answer_accuracy)
-            +",\\"goal7_test_after\\":"+num(t7After.answer_accuracy)
-            +",\\"goal1_steps\\":"+std::to_string(trained1)
-            +",\\"goal7_steps\\":"+std::to_string(trained7)
-            +",\\"stop\\":\\""+stop+"\\""
-            +",\\"heldout_non_degradation\\":"+(testSafe&&valSafe?"true":"false")
+            +"\",\"live_unchanged\":true"
+            +",\"candidate_saved\":"+(eligible?"true":"false")
+            +",\"blind_before\":"+std::to_string(blindBefore)
+            +",\"blind_after\":"+std::to_string(blindAfter)
+            +",\"r3r9_target_before\":"+std::to_string(oldBefore)
+            +",\"r3r9_target_after\":"+std::to_string(oldAfter)
+            +",\"goal1_validation_before\":"+num(v1Before.answer_accuracy)
+            +",\"goal1_validation_after\":"+num(v1After.answer_accuracy)
+            +",\"goal1_test_before\":"+num(t1Before.answer_accuracy)
+            +",\"goal1_test_after\":"+num(t1After.answer_accuracy)
+            +",\"goal7_validation_before\":"+num(v7Before.answer_accuracy)
+            +",\"goal7_validation_after\":"+num(v7After.answer_accuracy)
+            +",\"goal7_test_before\":"+num(t7Before.answer_accuracy)
+            +",\"goal7_test_after\":"+num(t7After.answer_accuracy)
+            +",\"goal1_steps\":"+std::to_string(trained1)
+            +",\"goal7_steps\":"+std::to_string(trained7)
+            +",\"stop\":\""+stop+"\""
+            +",\"heldout_non_degradation\":"+(testSafe&&valSafe?"true":"false")
             +"}";
         return js(env,json);
-    }catch(...){return js(env,"{\\"status\\":\\"shadow_exception\\"}");}
+    }catch(...){return js(env,"{\"status\":\"shadow_exception\"}");}
 }
 
 extern "C" JNIEXPORT jstring JNICALL
