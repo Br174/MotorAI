@@ -31,7 +31,7 @@ for needed in (
     "trial.trainGoal1(", "trial.trainGoal7(", "trial.evaluateGoal1Validation()",
     "trial.evaluateGoal7Validation()", "selected.evaluateGoal1Test()",
     "selected.evaluateGoal7Test()", "selected.saveCheckpoint(dest)",
-    "valNoLoss&&testsNoLoss", "afterBlind>beforeBlind", "afterReplay>=beforeReplay",
+    "valNoLoss && testsNoLoss", "afterBlind>beforeBlind", "afterReplay>=beforeReplay",
     "liveProfile==goal10RawProfile(selected)" if False else 'goal10RawProfile(selected)',
     "liveStatus!=g_engine.statusJson()", "const Case blind[]",
     "const Case replay[]", "bestSteps1", "bestSteps7",
