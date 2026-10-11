@@ -46,7 +46,7 @@ assert 'MotorAIPhase2ErrorAudit.run(this)' in ui
 assert 'phase2ErrorAuditReport.getText()' in ui
 assert 'phase2Shadow.setEnabled(false);' in ui
 assert 'R3R13 · Analizza le 50 risposte' in ui
-assert 'MotorAI Seed 021R3R13' in main
+assert 'MotorAI Seed 021R3R14' in main
 assert "versionCode = 40" in gradle
 assert 'versionName = "0.21.17-seed021r3r14"' in gradle
 assert 'Verify R3R13 read-only per-question audit' in workflow
