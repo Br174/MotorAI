@@ -56,9 +56,9 @@ for prompt,_ in new_cases:
     assert prompt not in train_cases, "leak into phase2 training"
     assert prompt not in older, "reused old holdout"
     assert ('"'+prompt+'"') not in core, "present in native training/validation/test"
-assert "MotorAIPhase2ShadowTrial.runR3R11(this)" in ui
+assert "MotorAIPhase2ShadowTrial.runR3R12(this)" in ui
 assert "nativePhase2R3R11Experiment(String sourcePath, String candidatePath)" in main
-assert "MotorAI Seed 021R3R11" in main
+assert "MotorAI Seed 021R3R12" in main
 for token in ("allProtected(c)", "MotorAIRecoveryMode.paused(c)",
               "MiniAiGoals.completedCount(c)!=10",
               "synchronized(MotorAICheckpointStore.recoveryMutex())",
@@ -68,7 +68,7 @@ for token in ("allProtected(c)", "MotorAIRecoveryMode.paused(c)",
     assert token in java,token
 for token in ("nativeSaveCheckpoint(", "nativeLoadCheckpoint(", "rotateAndSave(", "nativeGoal1TrainChunk(", "MiniAiGoals.updateGoal("):
     assert token not in java,token
-assert "versionCode = 37" in gradle
-assert 'versionName = "0.21.14-seed021r3r11"' in gradle
+assert "versionCode = 38" in gradle
+assert 'versionName = "0.21.15-seed021r3r12"' in gradle
 assert "Verify R3R11 independent-best no regression" in workflow
 print("PASS R3R11 independent lane selection, fresh heldout, live checkpoint no-write, protected Goal10 and versionCode 37")
