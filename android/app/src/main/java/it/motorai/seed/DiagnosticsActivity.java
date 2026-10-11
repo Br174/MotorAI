@@ -22,6 +22,7 @@ public class DiagnosticsActivity extends Activity {
     private TextView candidateCertification;
     private TextView promotionOutcome;
     private TextView generalizationReport;
+    private TextView phase2ShadowReport;
 
     private TextView text(String value, int sp, boolean bold) {
         TextView v = new TextView(this);
@@ -84,6 +85,11 @@ public class DiagnosticsActivity extends Activity {
         root.addView(generalizationReport);
         Button probe20=button("🧪 Esegui 20 prove nuove (senza allenamento)");
         root.addView(probe20);
+        root.addView(text("🧪 R3R10 — Miglioramento in copia isolata",18,true));
+        phase2ShadowReport=text("Prova non ancora avviata. Resta obbligatoria la pausa SOS.",14,false);
+        root.addView(phase2ShadowReport);
+        Button phase2Shadow=button("🛡️ R3R10 · Allena soltanto la copia (Goal1/Goal7)");
+        root.addView(phase2Shadow);
 
         root.addView(text("⚠️ Problemi rilevati", 18, true));
         failures = text("Nessun problema registrato.", 14, false);
@@ -171,8 +177,25 @@ public class DiagnosticsActivity extends Activity {
                 });
             },"MotorAI-20-Unseen-ReadOnly").start();
         });
+        phase2Shadow.setOnClickListener(v -> {
+            new android.app.AlertDialog.Builder(this)
+                .setTitle("R3R10 — solo copia isolata")
+                .setMessage("Conserva la pausa SOS e il backup esterno. Non tocca CURRENT, PREVIOUS o i 10 Goal. Solo la copia R3R10 verrà allenata; nessuna promozione automatica.")
+                .setNegativeButton("Annulla",(dialog,which)->{})
+                .setPositiveButton("Esegui prova isolata",(dialog,which)->{
+                    phase2Shadow.setEnabled(false);
+                    phase2ShadowReport.setText("Allenamento isolato Goal1/Goal7 in corso…");
+                    new Thread(()->{
+                        String result=MotorAIPhase2ShadowTrial.run(this);
+                        runOnUiThread(()->{
+                            phase2ShadowReport.setText(result);
+                            phase2Shadow.setEnabled(true);
+                        });
+                    },"MotorAI-Phase2-Shadow").start();
+                }).show();
+        });
         copy.setOnClickListener(v -> {
-            String all = report.getText().toString() + "\n\n🎯 GOAL 10\n" + goal10Details.getText() + "\n\n🔬 PROVE REALI NON INVASIVE\n" + goal10Inspector.getText() + "\n\n🧪 PROVA GOAL1 ISOLATA\n" + goal1Trial.getText() + "\n\n🔐 CERTIFICAZIONE CANDIDATA ISOLATA\n" + candidateCertification.getText() + "\n\n🛡️ PROMOZIONE REALE R3R8\n" + promotionOutcome.getText() + "\n\n🧭 FASE 2 · 20 PROVE NUOVE\n" + generalizationReport.getText() + "\n\n⚠️ PROBLEMI RILEVATI\n" +
+            String all = report.getText().toString() + "\n\n🎯 GOAL 10\n" + goal10Details.getText() + "\n\n🔬 PROVE REALI NON INVASIVE\n" + goal10Inspector.getText() + "\n\n🧪 PROVA GOAL1 ISOLATA\n" + goal1Trial.getText() + "\n\n🔐 CERTIFICAZIONE CANDIDATA ISOLATA\n" + candidateCertification.getText() + "\n\n🛡️ PROMOZIONE REALE R3R8\n" + promotionOutcome.getText() + "\n\n🧭 FASE 2 · 20 PROVE NUOVE\n" + generalizationReport.getText() + "\n\n🛡️ R3R10 COPIA ISOLATA\n" + phase2ShadowReport.getText() + "\n\n⚠️ PROBLEMI RILEVATI\n" +
                     failures.getText().toString();
             ClipboardManager cm = (ClipboardManager) getSystemService(Context.CLIPBOARD_SERVICE);
             cm.setPrimaryClip(ClipData.newPlainText("Diagnostica MotorAI", all));
