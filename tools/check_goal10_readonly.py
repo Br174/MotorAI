@@ -33,6 +33,6 @@ assert "MiniAiGoals.percent(c, 9) < 100" in hold
 assert "MotorAIGoal10DiagnosticHold.shouldHold(this)" in foreground
 assert "MotorAIGoal10DiagnosticHold.shouldHold(this)" in background
 assert "return false;" in background
-assert "versionCode = 36" in gradle
-assert 'versionName = "0.21.13-seed021r3r10"' in gradle
+assert "versionCode = 37" in gradle
+assert 'versionName = "0.21.14-seed021r3r11"' in gradle
 print("PASS: 10 Goal10 probes match cert criteria; no writes, no training, device UI wired.")
