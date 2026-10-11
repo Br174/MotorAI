@@ -2573,6 +2573,53 @@ void Engine::setCurriculum(int level){
 int Engine::curriculumLevel() const{ std::lock_guard<std::mutex> g(impl_->mu); return impl_->curriculum; }
 int Engine::curriculumStartStep() const{ std::lock_guard<std::mutex> g(impl_->mu); return impl_->curriculum_start_step; }
 
+/** R3R10: diversify only the TRAIN subsets of a COPY.
+ * This method is never invoked by g_engine or any normal training action.
+ * No exact R3R9 probe sentence is included. Holdout val/test remain untouched.
+ */
+void Engine::augmentPhase2TrainOnly() {
+    std::lock_guard<std::mutex> lock(impl_->mu);
+    const std::pair<int,const char*> intent[] = {
+        {0,"ti invio un saluto affettuoso"},{0,"una buona giornata anche a te"},
+        {0,"vorrei salutare il mio assistente"},{0,"saluti cordiali e buon lavoro"},
+        {0,"un caloroso bentrovato"},{0,"ehi amico mio piacere di risentirti"},
+        {0,"ti auguro un buon mattino"},{0,"un cenno di saluto da parte mia"},
+        {1,"spiegami la storia della navigazione"},{1,"che cosa sono i minerali"},
+        {1,"vorrei conoscere la struttura dei vulcani"},{1,"mi racconti la vita di tesla"},
+        {2,"fammi addizionare diciotto a sette"},{2,"quanto ottengo dalla somma di nove e sedici"},
+        {2,"esegui questa operazione aritmetica"},{2,"devo calcolare la differenza tra venti e cinque"},
+        {2,"conta otto e dodici insieme"},{2,"mi serve il risultato di un addizione"},
+        {3,"rintraccia un saggio dedicato alla geologia"},{3,"per favore trova una guida sui minerali"},
+        {3,"puoi cercare un articolo di astronomia"},{3,"voglio trovare un documento sulla zoologia"},
+        {3,"fai ricerche nel web sulla geografia"},{3,"recupera informazioni online sugli oceani"},
+        {3,"cerca un testo informativo sulla chimica"},{3,"trova una pubblicazione sulla fisica"},
+        {4,"accendi il riproduttore audio"},{4,"puoi avviare il programma per ascoltare brani"},
+        {4,"crea un nuovo elenco di cose da fare"},{4,"esegui il comando per spegnere la musica"}
+    };
+    const std::pair<int,const char*> router[] = {
+        {0,"un saluto cordiale per oggi"},{0,"ti va di fare due chiacchiere"},
+        {0,"un augurio di buon pomeriggio"},{0,"vorrei parlare con te"},
+        {1,"memorizza la localita in cui abito"},{1,"ricordati il nome che ho indicato"},
+        {1,"che nome hai conservato nella memoria"},{1,"salva che preferisco il verde"},
+        {2,"usa la calcolatrice per aggiungere otto a diciotto"},
+        {2,"effettua un addizione fra ventinove e dieci"},
+        {2,"calcolatrice per fare una somma di numeri"},
+        {2,"dammi il totale dei numeri quattordici e sei"},
+        {2,"mi aiuti con un esercizio di matematica"},
+        {2,"somma cinque e tredici usando i numeri"},
+        {2,"serve un calcolo per addizionare trenta e quattro"},
+        {2,"risolvi un conto aritmetico con due valori"},
+        {3,"individua online notizie di geologia"},
+        {3,"cerca sul web documenti riguardanti l oceano"},
+        {3,"voglio informazioni aggiornate sulle stelle"},
+        {3,"rintraccia un articolo sulla botanica del deserto"},
+        {3,"trova la biografia di un inventore su internet"},
+        {3,"puoi ricercare novita del settore scientifico"}
+    };
+    for (const auto& x:intent) impl_->goal1data.train.push_back({x.second,x.first});
+    for (const auto& x:router) impl_->goal7data.train.push_back({x.second,x.first});
+}
+
 Metrics Engine::evaluateGoal1Train(){ std::lock_guard<std::mutex> g(impl_->mu); return impl_->goal1.evaluate(impl_->goal1data.train); }
 Metrics Engine::evaluateGoal1Validation(){ std::lock_guard<std::mutex> g(impl_->mu); return impl_->goal1.evaluate(impl_->goal1data.val); }
 Metrics Engine::evaluateGoal1Test(){ std::lock_guard<std::mutex> g(impl_->mu); return impl_->goal1.evaluate(impl_->goal1data.test); }
