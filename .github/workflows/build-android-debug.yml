@@ -196,28 +196,34 @@ jobs:
           grep -q "runGoal10Certification" android/app/src/main/java/it/motorai/seed/MotorAIBackgroundJobService.java
 
       - name: Set up JDK 17
+        if: steps.native_gate.outcome == 'success'
         uses: actions/setup-java@v5
         with:
           distribution: temurin
           java-version: "17"
 
       - name: Set up Android SDK
+        if: steps.native_gate.outcome == 'success'
         uses: android-actions/setup-android@v4
 
       - name: Install Android SDK packages
+        if: steps.native_gate.outcome == 'success'
         run: |
           yes | sdkmanager --licenses >/dev/null || true
           sdkmanager             "platform-tools"             "platforms;android-36"             "build-tools;36.0.0"             "ndk;28.2.13676358"             "cmake;3.22.1"
 
       - name: Set up Gradle 9.6
+        if: steps.native_gate.outcome == 'success'
         uses: gradle/actions/setup-gradle@v5
         with:
           gradle-version: "9.6.0"
 
       - name: Restore stable MotorAI LAB signing key
+        if: steps.native_gate.outcome == 'success'
         run: base64 -d .github/lab-signing/motorai-lab.keystore.b64 > android/app/motorai-lab.keystore
 
       - name: Build MotorAI debug APK
+        if: steps.native_gate.outcome == 'success'
         id: android_build
         continue-on-error: true
         working-directory: android
