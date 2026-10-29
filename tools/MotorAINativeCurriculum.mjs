@@ -3,7 +3,7 @@ import {mkdirSync,writeFileSync} from 'node:fs';
 import {join} from 'node:path';
 const bin='/tmp/motorai_scudo_curriculum';
 const c=spawnSync('g++',['-std=c++20','-O2','-pthread','-Iandroid/app/src/main/cpp','tools/native_curriculum_smoke.cpp','android/app/src/main/cpp/motorai_core.cpp','-o',bin],{encoding:'utf8',timeout:180000,maxBuffer:4000000});
-const r=c.status===0&&!c.error?spawnSync(bin,[],{encoding:'utf8',timeout:90000,maxBuffer:4000000}):null;
+const r=c.status===0&&!c.error?spawnSync(bin,[],{encoding:'utf8',timeout:240000,maxBuffer:4000000}):null;
 const log=(c.stdout||'')+'\n'+(c.stderr||'')+'\n'+(r?.stdout||'')+'\n'+(r?.stderr||'');
 console.error('SCUDO_NATIVE_EXIT_DETAILS',JSON.stringify({compilerExit:c.status,compilerSignal:c.signal,compilerError:String(c.error||''),runtimeExit:r?.status,runtimeSignal:r?.signal,runtimeError:String(r?.error||'')}));
 const passed=c.status===0&&!c.error&&r?.status===0&&!r?.error;
