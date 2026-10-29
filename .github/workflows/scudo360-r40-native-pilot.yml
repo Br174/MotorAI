@@ -5,6 +5,7 @@ on:
       - motorlab/active-motorai-control
 permissions:
   contents: read
+  actions: read
 jobs:
   quality:
     runs-on: ubuntu-24.04
@@ -24,6 +25,21 @@ jobs:
           const p='.motorlab/scudo360-r40-native.json';
           if(existsSync(p))for(const x of JSON.parse(readFileSync(p,'utf8')).suites||[])
             if(x.status!=='passed')console.log('SCUDO_R40_NATIVE_DIAGNOSTICS',x.logTail||x.error);
+          NODE
+      - name: Recover immutable R39 native baseline evidence
+        env:
+          GH_TOKEN: ${{ github.token }}
+        shell: bash
+        run: |
+          set -euo pipefail
+          gh run download 40898898699 -n scudo360-motorai-40898898699 -D /tmp/r39-original-quality-proof
+          test -s /tmp/r39-original-quality-proof/scudo360-report.json
+          cp /tmp/r39-original-quality-proof/scudo360-report.json .motorlab/scudo360-r39-baseline.json
+          node - <<'NODE'
+          const old=require('./.motorlab/scudo360-r39-baseline.json');
+          if(old.commit!=='9da9ebb3946ca78c40c3789a5c945dc7630b9be2'||old.passed!==true)
+            throw Error('WRONG_QUALITY_BASELINE_SOURCE');
+          console.log('SCUDO_R39_EXACT_HISTORICAL_BASELINE',old.commit);
           NODE
       - name: Audit every native P0 P1 request on exact source commit
         run: node .motorlab/regression/scudo360-quality-r40.mjs .motorlab/scudo360-contracts.json .motorlab/scudo360-r40-native.json .motorlab/scudo360-r40-plan.json .motorlab/scudo360-r40-quality.json
