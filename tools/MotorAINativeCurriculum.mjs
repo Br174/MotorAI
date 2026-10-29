@@ -1,0 +1,15 @@
+import {spawnSync} from 'node:child_process';
+import {mkdirSync,writeFileSync} from 'node:fs';
+import {join} from 'node:path';
+const bin='/tmp/motorai_scudo_curriculum';
+const c=spawnSync('g++',['-std=c++20','-O2','-pthread','-Iandroid/app/src/main/cpp','tools/native_curriculum_smoke.cpp','android/app/src/main/cpp/motorai_core.cpp','-o',bin],{encoding:'utf8',timeout:180000,maxBuffer:4000000});
+const r=c.status===0&&!c.error?spawnSync(bin,[],{encoding:'utf8',timeout:240000,maxBuffer:4000000}):null;
+const log=(c.stdout||'')+'\n'+(c.stderr||'')+'\n'+(r?.stdout||'')+'\n'+(r?.stderr||'');
+console.error('SCUDO_NATIVE_EXIT_DETAILS',JSON.stringify({compilerExit:c.status,compilerSignal:c.signal,compilerError:String(c.error||''),runtimeExit:r?.status,runtimeSignal:r?.signal,runtimeError:String(r?.error||'')}));
+const passed=c.status===0&&!c.error&&r?.status===0&&!r?.error;
+const msg=log.slice(-1500).replaceAll('&','&amp;').replaceAll('<','&lt;').replaceAll('>','&gt;');
+const xml='<?xml version="1.0" encoding="UTF-8"?>\n<testsuite name="motorai.MotorAINativeCurriculum" tests="1" failures="'+(passed?0:1)+'" errors="0" skipped="0"><testcase classname="motorai.MotorAINativeCurriculum" name="Cxx_native_curriculum_compiles_and_runs">'+(passed?'':'<failure message="Native test failed">'+msg+'</failure>')+'</testcase></testsuite>\n';
+const dir='.motorlab/scudo360-test-results';mkdirSync(dir,{recursive:true});
+writeFileSync(join(dir,'TEST-motorai.MotorAINativeCurriculum.xml'),xml);
+process.stdout.write(log.slice(-5000));console.log('MOTORAI_SCUDO_CURRICULUM_PASS',passed);
+if(!passed)process.exitCode=1;

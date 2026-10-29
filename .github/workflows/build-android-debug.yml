@@ -18,21 +18,38 @@ concurrency:
 
 jobs:
   build-debug:
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-24.04
     timeout-minutes: 30
 
     steps:
       - name: Checkout
         uses: actions/checkout@v6
 
-      - name: Verify native curriculum
+      - name: Scudo360 native curriculum evidence gate
         id: native_gate
         continue-on-error: true
+        run: node .motorlab/regression/scudo360-gate.mjs .motorlab/scudo360-contracts.json promotion .motorlab/scudo360-report.json
+
+      - name: Print native diagnosis if Scudo detected a regression
+        if: always()
         run: |
-          g++ -std=c++20 -O2 -pthread -Iandroid/app/src/main/cpp \
-            tools/native_curriculum_smoke.cpp android/app/src/main/cpp/motorai_core.cpp \
-            -o /tmp/motorai_curriculum_smoke
-          /tmp/motorai_curriculum_smoke
+          node - <<'NODE'
+          const fs=require('node:fs');
+          const path='.motorlab/scudo360-report.json';
+          if(!fs.existsSync(path))process.exit(0);
+          const r=JSON.parse(fs.readFileSync(path,'utf8'));
+          if(!r.passed)for(const s of (r.suites||[]))console.log('SCUDO360_NATIVE_FAILURE',s.id,s.logTail||s.error||'unknown');
+          NODE
+      - name: Preserve native curriculum evidence
+        if: always()
+        uses: actions/upload-artifact@v6
+        with:
+          name: scudo360-motorai-${{ github.run_id }}
+          path: |
+            .motorlab/scudo360-report.json
+            .motorlab/scudo360-test-results/*.xml
+          if-no-files-found: warn
+          retention-days: 14
 
       - name: Verify Mini-AI Goal1 native benchmark
         id: goal1_gate
@@ -179,28 +196,34 @@ jobs:
           grep -q "runGoal10Certification" android/app/src/main/java/it/motorai/seed/MotorAIBackgroundJobService.java
 
       - name: Set up JDK 17
+        if: steps.native_gate.outcome == 'success'
         uses: actions/setup-java@v5
         with:
           distribution: temurin
           java-version: "17"
 
       - name: Set up Android SDK
+        if: steps.native_gate.outcome == 'success'
         uses: android-actions/setup-android@v4
 
       - name: Install Android SDK packages
+        if: steps.native_gate.outcome == 'success'
         run: |
           yes | sdkmanager --licenses >/dev/null || true
           sdkmanager             "platform-tools"             "platforms;android-36"             "build-tools;36.0.0"             "ndk;28.2.13676358"             "cmake;3.22.1"
 
       - name: Set up Gradle 9.6
+        if: steps.native_gate.outcome == 'success'
         uses: gradle/actions/setup-gradle@v5
         with:
           gradle-version: "9.6.0"
 
       - name: Restore stable MotorAI LAB signing key
+        if: steps.native_gate.outcome == 'success'
         run: base64 -d .github/lab-signing/motorai-lab.keystore.b64 > android/app/motorai-lab.keystore
 
       - name: Build MotorAI debug APK
+        if: steps.native_gate.outcome == 'success'
         id: android_build
         continue-on-error: true
         working-directory: android

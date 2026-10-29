@@ -1,0 +1,36 @@
+{
+  "schemaVersion": 1,
+  "project": "motorai",
+  "suites": [
+    {
+      "id": "native-curriculum-smoke",
+      "command": [
+        "node",
+        "tools/MotorAINativeCurriculum.mjs"
+      ],
+      "paths": [
+        "tools/MotorAINativeCurriculum.mjs",
+        "tools/native_curriculum_smoke.cpp",
+        "android/app/src/main/cpp/motorai_core.cpp"
+      ],
+      "junitDir": ".motorlab/scudo360-test-results",
+      "timeoutMs": 300000
+    }
+  ],
+  "contracts": [
+    {
+      "id": "motorai.native-curriculum-execution",
+      "priority": "P1",
+      "suites": [
+        "native-curriculum-smoke"
+      ],
+      "junitClasses": [
+        "motorai.MotorAINativeCurriculum"
+      ],
+      "requiredAt": [
+        "lab",
+        "promotion"
+      ]
+    }
+  ]
+}
