@@ -7,7 +7,7 @@ on:
     paths:
       - "android/**"
       - "tools/**"
-      - ".github/workflows/build-android-debug.yml"
+      # A workflow-only safety update does not require an additional APK build.
 
 permissions:
   contents: read
@@ -57,6 +57,11 @@ jobs:
             .motorlab/scudo360-test-results/*.xml
           if-no-files-found: warn
           retention-days: 14
+
+      - name: Scudo360 Quality r40 fail-closed before all APK builds
+        env:
+          SCUDO360_R40_PROMOTION: '1'
+        run: node .motorlab/regression/scudo360-quality-r40.mjs .motorlab/scudo360-contracts.json .motorlab/scudo360-report.json .motorlab/scudo360-r40-plan.json .motorlab/scudo360-r40-quality.json
 
       - name: Verify Mini-AI Goal1 native benchmark
         id: goal1_gate

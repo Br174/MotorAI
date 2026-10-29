@@ -1,0 +1,14 @@
+MOTORLAB_SCUDO360_R40_NATIVE_ANDROID_WIRING
+DATE=2026-10-29
+PROJECT=Br174/MotorAI
+RELEASE=2026.10.29-r40
+TARGET=main
+PR=18
+BASELINE_COMMIT=9da9ebb3946ca78c40c3789a5c945dc7630b9be2
+P0_P1_CLASS=motorai.MotorAINativeCurriculum
+R39_EXECUTOR=existing_native_smoke_single_execution
+R40_QUALITY=mandatory_pre_goal_and_pre_apk_fail_closed
+SOURCE_ENGINE=unchanged
+ANDROID_SIGNING=unchanged
+NO_NEW_PAID_SERVICES=true
+REAL_DEVICE_ACCEPTANCE=not_certified
