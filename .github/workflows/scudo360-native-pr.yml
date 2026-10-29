@@ -18,6 +18,16 @@ jobs:
       - uses: actions/checkout@v6
       - name: Run real C++ native smoke with JUnit evidence
         run: node .motorlab/regression/scudo360-gate.mjs .motorlab/scudo360-contracts.json promotion .motorlab/scudo360-report.json
+      - name: Print native diagnosis if Scudo detected a regression
+        if: always()
+        run: |
+          node - <<'NODE'
+          const fs=require('node:fs');
+          const path='.motorlab/scudo360-report.json';
+          if(!fs.existsSync(path))process.exit(0);
+          const r=JSON.parse(fs.readFileSync(path,'utf8'));
+          if(!r.passed)for(const s of (r.suites||[]))console.log('SCUDO360_NATIVE_FAILURE',s.id,s.logTail||s.error||'unknown');
+          NODE
       - name: Attach native test receipt
         if: always()
         uses: actions/upload-artifact@v6
