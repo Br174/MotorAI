@@ -1,0 +1,14 @@
+{
+  "schemaVersion": 1,
+  "surface": "ci",
+  "requestTrace": [
+    {
+      "id": "protect-motorai.native-curriculum-execution",
+      "contractIds": [
+        "motorai.native-curriculum-execution"
+      ]
+    }
+  ],
+  "baselineCommit": null,
+  "baselineReportPath": null
+}
