@@ -25,6 +25,13 @@ jobs:
       - name: Checkout
         uses: actions/checkout@v6
 
+      - name: MotorLab permanent active source proof
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          node scripts/motorlab-active-guard.mjs --self-test
+          node scripts/motorlab-active-guard.mjs
+
       - name: Scudo360 native curriculum evidence gate
         id: native_gate
         continue-on-error: true
