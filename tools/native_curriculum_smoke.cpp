@@ -52,13 +52,13 @@ static bool run_one(unsigned seed){
     e.setCurriculum(2);
     if(!train_until(e,2,1800)){std::cerr<<"SCUDO_FAIL seed="<<seed<<" stage=L2_convergence step="<<e.globalStep()<<std::endl;return false;}
     auto l2=e.evaluateTest();
-    if(l2.answer_accuracy<0.90f || e.evaluateRetentionL1().answer_accuracy<0.90f || e.evaluateRetentionL0().answer_accuracy<0.90f) return false;
+    if(l2.answer_accuracy<0.90f || e.evaluateRetentionL1().answer_accuracy<0.90f || e.evaluateRetentionL0().answer_accuracy<0.90f){std::cerr<<"SCUDO_FAIL seed="<<seed<<" stage=L2_test_accuracy value="<<l2.answer_accuracy<<" retention_L1="<<e.evaluateRetentionL1().answer_accuracy<<" retention_L0="<<e.evaluateRetentionL0().answer_accuracy<<std::endl;return false;}
 
     e.setCurriculum(3);
     if(!train_until(e,3,1800)){std::cerr<<"SCUDO_FAIL seed="<<seed<<" stage=L3_convergence step="<<e.globalStep()<<std::endl;return false;}
     auto l3=e.evaluateTest();
     if(l3.answer_accuracy<0.90f || e.evaluateRetentionL2().answer_accuracy<0.90f ||
-       e.evaluateRetentionL1().answer_accuracy<0.90f || e.evaluateRetentionL0().answer_accuracy<0.90f) return false;
+       e.evaluateRetentionL1().answer_accuracy<0.90f || e.evaluateRetentionL0().answer_accuracy<0.90f){std::cerr<<"SCUDO_FAIL seed="<<seed<<" stage=L3_test_accuracy value="<<l3.answer_accuracy<<" retention_L2="<<e.evaluateRetentionL2().answer_accuracy<<" retention_L1="<<e.evaluateRetentionL1().answer_accuracy<<" retention_L0="<<e.evaluateRetentionL0().answer_accuracy<<std::endl;return false;}
 
     motorai::Engine resumed(999);
     if(!save_reload(e,seed,3,resumed)){std::cerr<<"SCUDO_FAIL seed="<<seed<<" stage=L3_checkpoint"<<std::endl;return false;}
@@ -82,7 +82,7 @@ static bool run_one(unsigned seed){
     auto r0=resumed.evaluateRetentionL0();
 
     if(l4.answer_accuracy<0.90f || r3.answer_accuracy<0.90f || r2.answer_accuracy<0.90f ||
-       r1.answer_accuracy<0.90f || r0.answer_accuracy<0.90f) return false;
+       r1.answer_accuracy<0.90f || r0.answer_accuracy<0.90f){std::cerr<<"SCUDO_FAIL seed="<<seed<<" stage=L4_test_accuracy value="<<l4.answer_accuracy<<" r3="<<r3.answer_accuracy<<" r2="<<r2.answer_accuracy<<" r1="<<r1.answer_accuracy<<" r0="<<r0.answer_accuracy<<std::endl;return false;}
 
     motorai::Engine autoRun(999);
     if(!save_reload(resumed,seed,4,autoRun)){std::cerr<<"SCUDO_FAIL seed="<<seed<<" stage=L4_checkpoint"<<std::endl;return false;}
