@@ -28,6 +28,24 @@ jobs:
           const r=JSON.parse(fs.readFileSync(path,'utf8'));
           if(!r.passed)for(const s of (r.suites||[]))console.log('SCUDO360_NATIVE_FAILURE',s.id,s.logTail||s.error||'unknown');
           NODE
+      # Controlled A/B diagnosis. The required Scudo gate above remains fail-closed.
+      # Compile the ORIGINAL unmodified main test against this branch's unchanged C++ engine.
+      - name: Diagnose pristine baseline test with the same CI compiler
+        if: failure()
+        continue-on-error: true
+        shell: bash
+        run: |
+          set -uo pipefail
+          echo "SCUDO_BASELINE_COMPILER=$(g++ --version | head -n 1)"
+          git fetch --no-tags --depth=1 origin "${{ github.event.pull_request.base.sha }}" || exit 72
+          git show FETCH_HEAD:tools/native_curriculum_smoke.cpp > /tmp/motorai_original_curriculum.cpp || exit 73
+          g++ -std=c++20 -O2 -pthread -Iandroid/app/src/main/cpp \
+            /tmp/motorai_original_curriculum.cpp android/app/src/main/cpp/motorai_core.cpp \
+            -o /tmp/motorai_original_curriculum || exit 74
+          /tmp/motorai_original_curriculum
+          result=$?
+          echo "SCUDO_PRISTINE_MAIN_SMOKE_EXIT=$result"
+          exit "$result"
       - name: Attach native test receipt
         if: always()
         uses: actions/upload-artifact@v6
