@@ -1,0 +1,1 @@
+Scudo360 MotorAI mainline: replaces the existing native curriculum compile/run step with the same actual C++ command plus fresh JUnit per-contract evidence. Other Goal1-Goal10 tests and final combined fail-closed gate remain unchanged. No Android training/NN implementation or key/signing modifications. Device real-time training and generalization require separate testing.

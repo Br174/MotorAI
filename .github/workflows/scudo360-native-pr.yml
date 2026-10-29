@@ -1,0 +1,29 @@
+name: MotorAI Scudo360 native curriculum PR gate
+on:
+  pull_request:
+    branches: [main]
+    paths:
+      - 'android/app/src/main/cpp/**'
+      - 'tools/**'
+      - '.motorlab/**'
+      - '.github/workflows/build-android-debug.yml'
+      - '.github/workflows/scudo360-native-pr.yml'
+permissions:
+  contents: read
+jobs:
+  curriculum:
+    runs-on: ubuntu-latest
+    timeout-minutes: 8
+    steps:
+      - uses: actions/checkout@v6
+      - name: Run real C++ native smoke with JUnit evidence
+        run: node .motorlab/regression/scudo360-gate.mjs .motorlab/scudo360-contracts.json promotion .motorlab/scudo360-report.json
+      - name: Attach native test receipt
+        if: always()
+        uses: actions/upload-artifact@v6
+        with:
+          name: scudo360-motorai-pr-${{ github.run_id }}
+          path: |
+            .motorlab/scudo360-report.json
+            .motorlab/scudo360-test-results/*.xml
+          if-no-files-found: warn

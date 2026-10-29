@@ -25,14 +25,21 @@ jobs:
       - name: Checkout
         uses: actions/checkout@v6
 
-      - name: Verify native curriculum
+      - name: Scudo360 native curriculum evidence gate
         id: native_gate
         continue-on-error: true
-        run: |
-          g++ -std=c++20 -O2 -pthread -Iandroid/app/src/main/cpp \
-            tools/native_curriculum_smoke.cpp android/app/src/main/cpp/motorai_core.cpp \
-            -o /tmp/motorai_curriculum_smoke
-          /tmp/motorai_curriculum_smoke
+        run: node .motorlab/regression/scudo360-gate.mjs .motorlab/scudo360-contracts.json promotion .motorlab/scudo360-report.json
+
+      - name: Preserve native curriculum evidence
+        if: always()
+        uses: actions/upload-artifact@v6
+        with:
+          name: scudo360-motorai-${{ github.run_id }}
+          path: |
+            .motorlab/scudo360-report.json
+            .motorlab/scudo360-test-results/*.xml
+          if-no-files-found: warn
+          retention-days: 14
 
       - name: Verify Mini-AI Goal1 native benchmark
         id: goal1_gate
