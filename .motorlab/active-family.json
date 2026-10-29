@@ -1,0 +1,11 @@
+{
+  "schema": 1,
+  "repo": "Br174/MotorAI",
+  "active_ref": "motorlab/active-motorai-control",
+  "original_verified_sha": "9da9ebb3946ca78c40c3789a5c945dc7630b9be2",
+  "mode": "control-only",
+  "scudo_manifest": ".motorlab/scudo360-contracts.json",
+  "scudo_runner": ".motorlab/regression/scudo360-gate.mjs",
+  "native_workflow": ".github/workflows/build-android-debug.yml",
+  "scudo_command": "node .motorlab/regression/scudo360-gate.mjs"
+}
