@@ -7,7 +7,7 @@ on:
     paths:
       - "android/**"
       - "tools/**"
-      - ".github/workflows/build-android-debug.yml"
+      # A workflow-only safety update does not require an additional APK build.
 
 permissions:
   contents: read
