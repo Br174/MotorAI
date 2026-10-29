@@ -7,7 +7,7 @@ permissions:
   contents: read
 jobs:
   quality:
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-24.04
     timeout-minutes: 12
     steps:
       - uses: actions/checkout@v4
@@ -16,6 +16,15 @@ jobs:
           node-version: '22'
       - name: Execute existing r39 suite only once
         run: node .motorlab/regression/scudo360-gate.mjs .motorlab/scudo360-contracts.json lab .motorlab/scudo360-r40-native.json
+      - name: Show exact native failure diagnostics if any
+        if: failure()
+        run: |
+          node --input-type=module <<'NODE'
+          import {existsSync,readFileSync} from 'node:fs';
+          const p='.motorlab/scudo360-r40-native.json';
+          if(existsSync(p))for(const x of JSON.parse(readFileSync(p,'utf8')).suites||[])
+            if(x.status!=='passed')console.log('SCUDO_R40_NATIVE_DIAGNOSTICS',x.logTail||x.error);
+          NODE
       - name: Audit every native P0 P1 request on exact source commit
         run: node .motorlab/regression/scudo360-quality-r40.mjs .motorlab/scudo360-contracts.json .motorlab/scudo360-r40-native.json .motorlab/scudo360-r40-plan.json .motorlab/scudo360-r40-quality.json
       - name: Publish evidence including failed native contracts
