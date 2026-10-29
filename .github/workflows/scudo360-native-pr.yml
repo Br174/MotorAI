@@ -12,7 +12,7 @@ permissions:
   contents: read
 jobs:
   curriculum:
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-24.04
     timeout-minutes: 8
     steps:
       - uses: actions/checkout@v6
@@ -42,8 +42,10 @@ jobs:
           g++ -std=c++20 -O2 -pthread -Iandroid/app/src/main/cpp \
             /tmp/motorai_original_curriculum.cpp android/app/src/main/cpp/motorai_core.cpp \
             -o /tmp/motorai_original_curriculum || exit 74
+          set +e
           /tmp/motorai_original_curriculum
           result=$?
+          set -e
           echo "SCUDO_PRISTINE_MAIN_SMOKE_EXIT=$result"
           exit "$result"
       - name: Attach native test receipt
