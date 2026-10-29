@@ -1,0 +1,21 @@
+{
+  "commit": "9da9ebb3946ca78c40c3789a5c945dc7630b9be2",
+  "passed": true,
+  "contracts": [
+    {
+      "id": "motorai.native-curriculum-execution",
+      "status": "passed",
+      "classEvidence": [
+        {
+          "name": "motorai.MotorAINativeCurriculum",
+          "passed": true
+        }
+      ]
+    }
+  ],
+  "provenance": {
+    "source": "archived-executed-r39-junit-snapshot",
+    "runId": 40898898699,
+    "artifactId": 12907448331
+  }
+}
